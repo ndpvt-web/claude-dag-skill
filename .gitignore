@@ -1,0 +1,17 @@
+# DAG session data (user-specific, not committed)
+.dag/sessions/
+.dag/meta/provenance.json
+
+# System files
+.DS_Store
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# Dependencies
+node_modules/
