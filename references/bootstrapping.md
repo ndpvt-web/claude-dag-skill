@@ -59,11 +59,11 @@ Store the selected mode in `registry.json` under `"mode": "nano|standard|full"`.
 ```
 .dag/
   registry/
-    axioms/       # populated during bootstrapping
-    definitions/  # populated during bootstrapping (STANDARD/FULL only)
-    hypotheses/   # populated during bootstrapping (STANDARD/FULL only)
-    theorems/     # populated as proofs are derived
-    deprecated/   # empty at init
+    axioms.json         # populated during bootstrapping — one JSON object, all entries keyed by ID
+    definitions.json    # populated during bootstrapping (STANDARD/FULL only)
+    hypotheses.json     # populated during bootstrapping (STANDARD/FULL only)
+    theorems.json       # empty object {} at init — populated as proofs are derived
+    deprecated.json     # empty object {} at init
   meta/
     registry.json
     provenance.json
@@ -77,7 +77,7 @@ Store the selected mode in `registry.json` under `"mode": "nano|standard|full"`.
 Before asking anything:
 
 ```
-if .dag/registry/axioms/ directory exists AND contains .md files:
+if .dag/registry/axioms.json exists AND contains entries:
     Read .dag/meta/registry.json → print summary: entry counts, last-modified, consistency status, current mode
     ask: (a) continue building  (b) review existing  (c) upgrade mode  (d) start fresh
     NEVER silently overwrite
@@ -205,7 +205,7 @@ Print full proposed registry. Ask:
 >
 > Fix any of these now. Once written to disk, changes require explicit amendment with a timestamp."
 
-Only after explicit confirmation: write all entry files atomically — one file per entry in its type directory (e.g., `registry/axioms/A1.md`, `registry/definitions/D1.md`). Update `registry.json` last, after all entry files are written, so the index is never ahead of the files it points to.
+Only after explicit confirmation: write all type-level JSON files atomically — one file per type (`registry/definitions.json`, `registry/axioms.json`, `registry/hypotheses.json`), each containing all entries of that type keyed by ID. Create empty `registry/theorems.json` and `registry/deprecated.json` as `{}`. Update `registry.json` last, after every type file exists, so the index is never ahead of the files it points to.
 
 ## Output After Bootstrapping
 

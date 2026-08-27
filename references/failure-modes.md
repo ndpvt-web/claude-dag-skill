@@ -2,14 +2,17 @@
 
 ## Write-Time Contradiction Check
 
-Run before EVERY write of a new entry file. Do not skip. Do not batch.
+Run before EVERY write of a new entry. Do not skip. Do not batch.
 
-**Loading entries for the check:** Read `registry.json` → collect all active entry IDs → Read each individual entry file using the `file` field in `entry_index`. This is a Mode 3 load (all active entries), justified because contradiction checks require full context.
+**Loading entries for the check:** Read `registry.json` → collect active entry IDs → Read all four type JSON files (`axioms.json`, `definitions.json`, `hypotheses.json`, `theorems.json`). This is a Mode 3 load (all active entries), justified because contradiction checks require full context.
 
 ```bash
-# Example: collect all active entry files
-jq -r '.entry_index | to_entries[] | select(.value.status=="active") | .value.file' .dag/meta/registry.json
-# Then Read each file returned
+# Load all active entries: 4 reads total, regardless of entry count
+# Previously required N individual file reads + aggregation
+jq 'to_entries | map(select(.value.status == "active")) | from_entries' .dag/registry/axioms.json
+jq 'to_entries | map(select(.value.status == "active")) | from_entries' .dag/registry/definitions.json
+jq 'to_entries | map(select(.value.status == "active")) | from_entries' .dag/registry/hypotheses.json
+jq 'to_entries | map(select(.value.status == "active")) | from_entries' .dag/registry/theorems.json
 ```
 
 **Check prompt (give to LLM with full active registry as context):**
@@ -18,7 +21,7 @@ jq -r '.entry_index | to_entries[] | select(.value.status=="active") | .value.fi
 REGISTRY CONSISTENCY CHECK
 
 Existing active entries:
-[full text of all active D, H, A, T entries — loaded individually from registry.json entry_index using each entry's "file" path]
+[full text of all active D, H, A, T entries — loaded from the four type JSON files, filtered to status: active]
 
 Proposed new entry:
 Type: [type]
@@ -58,12 +61,18 @@ The same consistency check prompt must be dispatched to TWO additional models fr
 
 **Method A — Codex CLI workers (parallel, preferred):**
 
-Write the check prompt to a temp file to avoid shell escaping issues with large registry content, then dispatch two workers in parallel:
+Assemble the check prompt from the four type JSON files (4 reads total, regardless of entry count) and dispatch two workers in parallel:
 
 ```bash
-# Write prompt to temp file
-cat > /tmp/dag_consistency_check.md << 'DAGEOF'
-[CONSISTENCY CHECK PROMPT TEXT + FULL ACTIVE REGISTRY CONTENT]
+# Assemble registry content: 4 reads instead of N
+cat .dag/registry/definitions.json .dag/registry/hypotheses.json \
+    .dag/registry/axioms.json .dag/registry/theorems.json > /tmp/dag_registry_content.json
+
+# Build full consistency check prompt
+cat > /tmp/dag_consistency_check.txt << 'DAGEOF'
+REGISTRY CONSISTENCY CHECK
+[Full active registry content from /tmp/dag_registry_content.json]
+[Proposed new entry]
 DAGEOF
 
 # Dispatch two workers in parallel — choose two models from different families
@@ -71,11 +80,11 @@ MODEL_1="deepseek/deepseek-v4-pro"
 MODEL_2="minimax/minimax-m3"
 
 codex -c model_provider=ai_gateway -m "$MODEL_1" --skip-git-repo-check \
-  exec "$(cat /tmp/dag_consistency_check.md)" > /tmp/dag_check_m1.txt 2>&1 &
+  exec "$(cat /tmp/dag_consistency_check.txt)" > /tmp/dag_check_m1.txt 2>&1 &
 PID1=$!
 
 codex -c model_provider=ai_gateway -m "$MODEL_2" --skip-git-repo-check \
-  exec "$(cat /tmp/dag_consistency_check.md)" > /tmp/dag_check_m2.txt 2>&1 &
+  exec "$(cat /tmp/dag_consistency_check.txt)" > /tmp/dag_check_m2.txt 2>&1 &
 PID2=$!
 
 wait $PID1 $PID2
@@ -90,10 +99,11 @@ Spawn two sub-agents, each receiving the same consistency check prompt and instr
 **Method C — Sequential AI Gateway fallback (if neither Codex nor sub-agents available):**
 
 ```bash
+# Prompt assembled from 4 type JSON files (see Method A)
 curl $AI_GATEWAY_BASE_URL/api/v1/chat/completions \
   -H "Authorization: Bearer $AI_GATEWAY_API_KEY" \
   -H "Content-Type: application/json" \
-  -d "{\"model\": \"deepseek/deepseek-v4-pro\", \"messages\": [{\"role\": \"user\", \"content\": \"$(cat /tmp/dag_consistency_check.md)\"}]}"
+  -d "{\"model\": \"deepseek/deepseek-v4-pro\", \"messages\": [{\"role\": \"user\", \"content\": \"$(cat /tmp/dag_consistency_check.txt)\"}]}"
 # Then repeat for second model (minimax/minimax-m3 or similar)
 ```
 
@@ -193,20 +203,20 @@ Staleness Alert: H2 — review_trigger "post-pivot" matched event on 2026-06-01.
 **What it is:** The right axiom or theorem exists in the registry but is not retrieved or cited in the proof chain. The proof rests on a weaker foundation than what's available.
 
 **Guards:**
-- Atomic storage: one entry per file, one statement per entry, one sentence per statement. Compound chunks dilute retrieval signal. Individual entry files enforce this at the filesystem level — loading A3.md loads ONLY A3's statement and fields, nothing else.
+- Atomic storage: one JSON object per type file, one statement per entry, one sentence per statement. Type-level JSON files give complete type coverage in one read — loading `axioms.json` gives you every active axiom; no relevant entry is missed because it was in a file you didn't load.
 - After every proof step, post-retrieval entailment check: "Does [proof step] actually follow from [cited ID's full statement]?" Simple LLM call: YES/NO + one-sentence reason.
-- Load only cited entries per proof step (Mode 2): Read the individual entry files for IDs actually cited in this step. Front-load retrieved entries in context, not buried in the middle (Lost-in-the-Middle effect).
-- Retrieval path: `registry.json` (Mode 1) → identify candidate IDs → `Read .dag/registry/{type}/{ID}.md` (Mode 2). Never load a whole type directory.
+- Load type files for types cited in the proof step (Mode 2): Read `axioms.json` if proof cites any A-type entry; extract only the cited IDs. Each type file loads every entry of that type, which eliminates the "relevant but uncited" gap.
+- Retrieval path: `registry.json` (Mode 1) → identify needed types → `Read .dag/registry/{type}.json` → extract cited IDs by key (Mode 2).
 
 ## Failure Mode 7: Over-Retrieval
 
 **What it is:** Too many registry entries loaded into context. LLMs ignore information in the middle of long contexts. Contradictory or tangentially relevant entries mislead reasoning.
 
 **Guards:**
-- Mode 1 (summary index) is the default — never load individual entry files for routine session start; `registry.json` only
-- Mode 2 loads full text of cited entries only, on demand — load what the proof step actually cites; nothing more
-- Mode 3 (all entry files) is reserved for init/audit/deprecate only
-- Principle: each Read call is deliberate and targeted; the individual-file architecture enforces this naturally — you cannot accidentally load all axioms by reading a single file
+- Mode 1 (summary index) is the default — never load type JSON files for routine session start; `registry.json` only
+- Mode 2 loads type JSON files for types actually cited, on demand — if a proof step cites only axioms and one definition, that's 2 reads; each file gives complete type coverage without loading unneeded types
+- Mode 3 (all type files) is reserved for init/audit/deprecate/contradiction-check only
+- Principle: type-level JSON trades the "N individual file reads" problem for "max 4 reads per operation." For proofs citing 1-2 types, load those 1-2 files. For contradiction checks that need everything, load all 4. Each Read is deliberate and targeted by type.
 
 ## Failure Mode 8: Unreviewed Hypotheses Poisoning Proof Chains
 

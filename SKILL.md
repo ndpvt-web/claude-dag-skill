@@ -20,34 +20,29 @@ Target: 50-65% fewer tokens on prose. Technical accuracy: unchanged.
 {project-root}/
   .dag/
     registry/
-      axioms/           # A-type: structural ground truths (non-derivable)
-        A1.md  A2.md  ...
-      definitions/      # D-type: what terms mean
-        D1.md  D2.md  ...
-      hypotheses/       # H-type: scope/existence claims (empirical, falsifiable)
-        H1.md  H2.md  ...
-      theorems/         # T-type: derived conclusions with proof chains
-        T1.md  T2.md  ...
-      deprecated/       # Tombstones: superseded entries, never deleted
-        A2.md  ...
+      axioms.json         # A-type: structural ground truths — one JSON object keyed by ID
+      definitions.json    # D-type: what terms mean — one JSON object keyed by ID
+      hypotheses.json     # H-type: scope/existence claims (empirical, falsifiable) — one JSON object keyed by ID
+      theorems.json       # T-type: derived conclusions with proof chains — one JSON object keyed by ID
+      deprecated.json     # Tombstones: superseded entries, never deleted — one JSON object keyed by ID
     meta/
-      registry.json     # Machine index + consistency state + file paths
-      provenance.json   # Full derivation graph
+      registry.json       # Machine index + consistency state (no file paths — ID prefix maps to type file)
+      provenance.json     # Full derivation graph
     sessions/
-      YYYY-MM-DD-N.md   # Per-session typed scratchpads
+      YYYY-MM-DD-N.md     # Per-session typed scratchpads (markdown — working documents, not structured data)
 ```
 
-One file per entry. Each file = one atom. `registry.json` is the index: ID → file path + one-liner + status + deps. Agent loads only the files it needs — never more.
+One file per type. All entries of a given type live in a single JSON object keyed by ID. `registry.json` is the summary index: ID → one-liner + status + deps. Agent loads only the type files it needs — max 4 reads for any operation, regardless of entry count.
 
-## Why Directories, Not Files
+## Why JSON Type Files, Not Per-Entry Markdown
 
 The three Aristotelian types fail differently:
-- D-type: term meaning shifts (drift) → audited separately
-- H-type: world changes, scope assumptions go stale → each needs falsification criterion
-- A-type: can contradict each other → write-time contradiction check on every add
+- D-type: term meaning shifts (drift) → audited as a group in `definitions.json`
+- H-type: world changes, scope assumptions go stale → each needs falsification criterion, tracked in `hypotheses.json`
+- A-type: can contradict each other → write-time contradiction check needs ALL active axioms at once
 - T-type: derived conclusions — stay theorems permanently; if content needs to become foundational, human writes a new A-type from scratch
 
-Each type lives in its own directory. Each entry lives in its own file. Retrieval cost = one file read per entry, not one file read per type. This is the atomic access guarantee.
+Type separation matters for auditing. But per-entry separation does not. The dominant operations (contradiction check, cross-model verification, proof chains citing 3+ entries) are all cross-entry — they need multiple entries of the same type simultaneously. Loading `axioms.json` gives you every axiom in one read; the contradiction check no longer aggregates N individual files. JSON structure also enables schema validation, `jq` queries, deterministic lookup by ID key, and no frontmatter parsing edge cases.
 
 ## ID Scheme
 
@@ -58,21 +53,24 @@ Each type lives in its own directory. Each entry lives in its own file. Retrieva
 | A | Axiom | A1, A2 |
 | T | Theorem | T1, T2 |
 
-IDs are permanent. Never reused after deprecation. Deprecated entries get tombstones written to `registry/deprecated/{original-ID}.md`.
+IDs are permanent. Never reused after deprecation. Deprecated entries get tombstones added to `registry/deprecated.json` as JSON objects keyed by their original ID.
 
 ## Entry Format
 
-Every entry has universal mandatory fields:
-```yaml
----
-id: A3
-type: axiom
-label: "short-human-name"
-statement: "The full formal statement. One sentence. No ambiguity."
-created: YYYY-MM-DD
-created_by: human        # human | derived
-status: active           # active | deprecated | under-review
----
+Every entry lives as a JSON object inside its type file, keyed by ID. Universal mandatory fields:
+
+```json
+{
+  "A3": {
+    "id": "A3",
+    "type": "axiom",
+    "label": "short-human-name",
+    "statement": "The full formal statement. One sentence. No ambiguity.",
+    "created": "YYYY-MM-DD",
+    "created_by": "human",
+    "status": "active"
+  }
+}
 ```
 
 Type-specific additional fields — see references/registry-spec.md.
@@ -100,7 +98,7 @@ Type-specific additional fields — see references/registry-spec.md.
 
 ## Workflow 1: First Run — `/dag init`
 
-Check `.dag/registry/axioms/` directory first. If `.md` files exist → load `registry.json` for summary, ask: continue / review / start fresh. Never silently overwrite.
+Check `.dag/registry/axioms.json` first. If the file exists and has entries → load `registry.json` for summary, ask: continue / review / start fresh. Never silently overwrite.
 
 Then run bootstrapping in strict order (definitions → hypotheses → axioms). See references/bootstrapping.md for full dialogue.
 
@@ -117,7 +115,7 @@ If no → write it as A-type with a mandatory rationale.
 - Hypotheses: have you made explicit every assumption about the world that, if false, would change your conclusions?
 - Axioms: is every entry genuinely non-derivable from existing entries plus common knowledge? The minimum sufficient set is the goal — neither too few (gaps in reasoning) nor inflated (n² contradiction surface).
 
-After bootstrapping, write all entry files atomically — one file per entry in its type directory (`registry/definitions/D1.md`, `registry/axioms/A1.md`, etc.). Update `registry.json` last, after every entry file exists. Print summary:
+After bootstrapping, write all type-level JSON files atomically — one file per type (`registry/definitions.json`, `registry/axioms.json`, etc.), each containing all entries of that type keyed by ID. Update `registry.json` last, after every type file exists. Print summary:
 ```
 Registry initialized for [project]:
   N definitions (D1-DN)
@@ -184,7 +182,7 @@ After proof: ask "Should any hidden assumptions be added as H-type entries?"
 
 ## Workflow 3: Add Theorem — `/dag derive [claim] from [IDs]`
 
-Five checks before writing a new theorem entry file:
+Five checks before writing a new theorem entry to `theorems.json`:
 
 1. **Premise existence**: all cited IDs exist and are `status: active`
 2. **Term consistency**: all terms in statement have D-type definitions or are general language
@@ -213,34 +211,36 @@ No untagged entries in the formal scratchpad section.
 ## Token Load Modes
 
 **Mode 1 — Summary Index (default):**
-Read `registry.json` entry_index — one-liner + status + file path per entry. Use at session start, for scoping. Never load individual entry files in this mode.
+Read `registry.json` entry_index — one-liner + status + type per entry. Use at session start, for scoping. Never load type JSON files in this mode.
 
-**Mode 2 — Targeted Full Load (during active proof):**
-Read the individual entry file for each cited ID using the `file` path from `registry.json`. Load only what the current proof step actually cites — nothing more. Example: `Read .dag/registry/axioms/A3.md` to get A3's full text — nothing else loads.
+**Mode 2 — Targeted Type Load (during active proof):**
+Read the type-level JSON file for each type cited in the current proof step. Parse the JSON to extract only the cited ID entries. Example: `Read .dag/registry/axioms.json` → extract `A3` by key. If proof cites axioms + one definition, that's 2 reads total. Each type file loads every entry of that type — which is exactly what cross-entry reasoning needs.
 
 **Mode 3 — Full Registry Load:**
 Only for: /dag init, /dag audit, /dag deprecate.
-Read all individual entry files across all type directories.
+Read all four type JSON files + deprecated.json.
 Never for routine proof chains.
 
 **Load decision:**
 - Session start → Mode 1 (registry.json only)
-- /dag prove or /dag derive → Mode 1 + Read individual entry files on demand (Mode 2)
-- /dag status → Read registry.json only (no entry file loads)
-- /dag init / audit / deprecate → Mode 3 (all entry files)
+- /dag prove or /dag derive → Mode 1 + Read type JSON files for cited types on demand (Mode 2)
+- /dag status → Read registry.json only (no type file loads)
+- /dag init / audit / deprecate → Mode 3 (all type files)
+- Contradiction check (every add) → Mode 3 (needs all active entries anyway)
 
-**Why this works:** An agent reading A3 does `Read .dag/registry/axioms/A3.md`. It loads only A3. Under the old format, getting A3 required reading axioms.md — loading every other axiom with it. Individual files = atomic access = zero context pollution.
+**Why this works:** The contradiction check — which runs on every axiom/theorem/definition addition and cross-model verification — needs ALL active entries of ALL types. With per-entry markdown, that was N individual file reads + aggregation. With type-level JSON: 4 reads (`axioms.json`, `definitions.json`, `hypotheses.json`, `theorems.json`) give you the complete active registry. For proof chains citing a few entries across 2-3 types: 2-3 reads instead of potentially missing relevant uncited entries (the retrieval recall problem documented in Failure Mode 6). JSON also enables `jq` queries for precise field extraction without loading full entry text into context when only specific fields are needed.
 
 ## What This Skill Must NOT Do
 
 - Auto-generate axioms without human confirmation of each
 - Silently absorb hidden assumptions surfaced during proof chains
-- Delete any entry without creating a tombstone
+- Delete any entry without creating a tombstone in `deprecated.json`
 - Add theorem without `derived_from` field
 - Add axiom without `rationale` field
 - Promote theorems to axioms mechanically — if a theorem's content needs to be foundational, the human writes a NEW A-type entry from scratch with their own words; do not copy-promote
-- Load Mode 3 for routine proof chains
+- Load Mode 3 for routine `/dag status` or `/dag session` calls (Mode 3 reserves to init/audit/deprecate/contradiction-check)
 - Re-use deprecated IDs
+- Write entries as individual markdown files — all entries go into their type-level JSON file
 
 ## References
 
