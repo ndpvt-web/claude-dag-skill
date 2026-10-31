@@ -5,6 +5,7 @@
   "label": "t1",
   "statement": "Statement of T1.",
   "created": "2026-05-01",
+  "created_by": "human",
   "status": "active",
   "derived_from": [
    "A9",

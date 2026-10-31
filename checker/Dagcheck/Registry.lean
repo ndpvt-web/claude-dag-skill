@@ -30,6 +30,7 @@ structure Entry where
   status : Status
   label : String
   statement : String
+  createdBy : String := ""
   derivedFrom : List String := []
   dependsOn : List String := []
   supersededBy : Option String := none
@@ -122,6 +123,11 @@ private def optStrList (j : Json) (k : String) : Except String (List String) :=
     | .ok arr =>
       arr.toList.mapM (fun x => x.getStr?.mapError (fun e => s!"field '{k}': {e}"))
 
+private def reqStrList (ctx : String) (j : Json) (k : String) : Except String (List String) :=
+  match (j.getObjVal? k).toOption with
+  | none => .error s!"{ctx}: field '{k}' is required"
+  | some _ => optStrList j k
+
 def idSchemeOk (id : String) (pre : Char) : Bool :=
   match id.toList with
   | c :: rest => c == pre && rest.length ≥ 1 && rest.all Char.isDigit
@@ -149,6 +155,7 @@ partial def parseEntry (ctx : String) (t : EntryType) (key : String) (j : Json) 
   let label ← reqStr ectx j "label"
   let statement ← reqStr ectx j "statement"
   let status ← parseStatus ectx (← reqStr ectx j "status")
+  let createdBy ← reqStr ectx j "created_by"
   let createdS ← reqStr ectx j "created"
   let created ← match parseDate createdS with
     | some d => .ok d
@@ -156,12 +163,15 @@ partial def parseEntry (ctx : String) (t : EntryType) (key : String) (j : Json) 
   -- strict schema: unknown fields are loud errors (a silently dropped field is how a
   -- registry comes to believe something the file never said). To retire an entry, move
   -- it to deprecated.json with superseded_by; active entries carry no such field.
-  let knownCommon := ["id", "type", "label", "statement", "created", "status", "form", "depends_on"]
+  -- field sets per references/registry-spec.md; `form` is the checker's own encoding
+  -- extension (documented in verified-checker.md), everything else is spec-verbatim
+  let knownCommon := ["id", "type", "label", "statement", "created", "created_by", "status", "form"]
   let knownType : List String := match t with
-    | .axiom => ["rationale"]
-    | .hypothesis => ["falsification", "review_trigger", "staleness_period_days", "review_log"]
+    | .axiom => ["rationale", "domain", "hardness", "depends_on"]
+    | .hypothesis => ["scope_claim", "falsification", "review_trigger", "staleness_period_days", "review_log"]
     | .theorem => ["derived_from", "inference_rule", "derivation_note", "proof_confidence", "session_derived"]
-    | _ => []
+    | .definition => ["term", "scope", "distinguishes_from", "rationale"]
+    | .tombstone => []
   let objKeys ← match j.getObj? with
     | .ok ps => .ok (ps.toList.map Prod.fst)
     | .error e => .error s!"{ectx}: entry must be an object: {e}"
@@ -190,7 +200,12 @@ partial def parseEntry (ctx : String) (t : EntryType) (key : String) (j : Json) 
   | .axiom =>
     let r ← reqStr ectx j "rationale"
     if r.isEmpty then throw s!"{ectx}: axiom rationale must be non-empty"
+    let _ ← reqStrList ectx j "domain"
+    let h ← reqStr ectx j "hardness"
+    if h != "hard" && h != "defeasible" then
+      throw s!"{ectx}: hardness must be \"hard\" or \"defeasible\", got '{h}'"
   | .hypothesis =>
+    let _ ← reqStr ectx j "scope_claim"
     let f ← reqStr ectx j "falsification"
     if f.isEmpty then throw s!"{ectx}: hypothesis falsification must be non-empty"
     let _ ← reqStr ectx j "review_trigger"
@@ -199,7 +214,15 @@ partial def parseEntry (ctx : String) (t : EntryType) (key : String) (j : Json) 
     match inferenceRule with
     | none => throw s!"{ectx}: theorem inference_rule required"
     | some _ => pure ()
-  | _ => pure ()
+    let dn ← reqStr ectx j "derivation_note"
+    if dn.isEmpty then throw s!"{ectx}: theorem derivation_note must be non-empty"
+  | .definition =>
+    let _ ← reqStr ectx j "term"
+    let _ ← reqStr ectx j "scope"
+    let _ ← reqStrList ectx j "distinguishes_from"
+    let r ← reqStr ectx j "rationale"
+    if r.isEmpty then throw s!"{ectx}: definition rationale must be non-empty"
+  | .tombstone => pure ()
   -- H staleness inputs
   let stalenessDays ← match (j.getObjVal? "staleness_period_days").toOption with
     | none => .ok none
@@ -208,8 +231,8 @@ partial def parseEntry (ctx : String) (t : EntryType) (key : String) (j : Json) 
       else match v.getNum? with
         | .error e => .error s!"{ectx}: staleness_period_days: {e}"
         | .ok n =>
-          if n.exponent == 0 && n.mantissa ≥ 0 then .ok (some n.mantissa.toNat)
-          else .error s!"{ectx}: staleness_period_days must be a non-negative integer or null"
+          if n.exponent == 0 && n.mantissa ≥ 0 && n.mantissa ≤ 36500 then .ok (some n.mantissa.toNat)
+          else .error s!"{ectx}: staleness_period_days must be an integer in [0, 36500] or null (100-year bound rejects absurd values and exponent blowups)"
   let lastReview ← match (j.getObjVal? "review_log").toOption with
     | none => .ok none
     | some v =>
@@ -224,7 +247,7 @@ partial def parseEntry (ctx : String) (t : EntryType) (key : String) (j : Json) 
             match acc with
             | none => .ok (some d)
             | some a => .ok (some (if daysFromCivil d.y d.m d.d > daysFromCivil a.y a.m a.d then d else a))) none
-  return { id, type := t, status, label, statement, derivedFrom, dependsOn,
+  return { id, type := t, status, label, statement, createdBy, derivedFrom, dependsOn,
            inferenceRule, proofConfidence, form, created := some created,
            stalenessDays, lastReview }
 

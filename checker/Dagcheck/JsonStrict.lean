@@ -105,6 +105,13 @@ where
           | [] => (false, "", [])
         else (false, "", rest)
       | [] => (false, "", [])
+    -- adversarial bounds: parser work must stay linear in sane input. Exponents beyond
+    -- two digits or mantissas beyond 40 digits are rejected, never exponentiated.
+    if expPart.length > 2 then
+      .error s!"number exponent out of supported range (|exp| <= 99)"
+    else if intPart.length > 40 || fracPart.length > 40 then
+      .error "number has too many digits (>40 unsupported)"
+    else
     let digits := intPart ++ fracPart
     let mant := digits.toInt!
     let mant := if neg then -mant else mant

@@ -8,8 +8,10 @@ commit it as the freshness baseline (see verified-checker.md).
 ## Nodes and edges
 
 - **Node** = registry entry: `{id, type, status, label, fingerprint}`.
-  `fingerprint` is a non-cryptographic hash over the entry's authoritative content
-  fields, computed at generation time.
+  `fingerprint` is a non-cryptographic hash over the entry's CONTENT fields (type,
+  statement, created_by, citations, rule, confidence, form) - the fields a derivation
+  depends on. Label edits never drift it; status transitions are state, not content.
+  IDs are permanent by policy and are never renamed.
 - **Dependency edges**: `cites` (from `derived_from`) and `depends` (from
   `depends_on`), directed citer -> cited.
 - **History edges**: `supersedes` (from a tombstone's `superseded_by`), directed

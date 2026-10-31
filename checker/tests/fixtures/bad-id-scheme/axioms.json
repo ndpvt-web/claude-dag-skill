@@ -5,7 +5,12 @@
   "label": "a2",
   "statement": "Statement of A2.",
   "created": "2026-05-01",
+  "created_by": "human",
   "status": "active",
+  "domain": [
+   "strategy"
+  ],
+  "hardness": "hard",
   "rationale": "Second.",
   "form": {
    "atom": "R"
@@ -17,7 +22,12 @@
   "label": "x1",
   "statement": "Statement of X1.",
   "created": "2026-05-01",
+  "created_by": "human",
   "status": "active",
+  "domain": [
+   "strategy"
+  ],
+  "hardness": "hard",
   "rationale": "r"
  }
 }

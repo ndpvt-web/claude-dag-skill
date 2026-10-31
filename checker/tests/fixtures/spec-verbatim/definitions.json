@@ -1,0 +1,19 @@
+{
+ "D1": {
+  "id": "D1",
+  "type": "definition",
+  "label": "user",
+  "term": "user",
+  "statement": "A user is a human operating the product interface with intent to accomplish a task.",
+  "scope": "applies to all product and retention reasoning",
+  "distinguishes_from": [
+   "automated agent",
+   "admin",
+   "API consumer"
+  ],
+  "rationale": "Without this definition, retention metrics may conflate human users with API consumers.",
+  "created": "2026-05-17",
+  "created_by": "human",
+  "status": "active"
+ }
+}

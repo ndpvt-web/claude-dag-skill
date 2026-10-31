@@ -5,7 +5,12 @@
   "label": "a1",
   "statement": "Statement of A1.",
   "created": "2026-05-01",
+  "created_by": "human",
   "status": "active",
+  "domain": [
+   "strategy"
+  ],
+  "hardness": "hard",
   "rationale": "Founder decision.",
   "form": {
    "imp": [
@@ -24,7 +29,12 @@
   "label": "a2",
   "statement": "Statement of A2.",
   "created": "2026-05-01",
+  "created_by": "human",
   "status": "active",
+  "domain": [
+   "strategy"
+  ],
+  "hardness": "hard",
   "rationale": "Second.",
   "form": {
    "atom": "R"

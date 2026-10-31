@@ -30,8 +30,12 @@ def dateJson (d : Date) : String :=
 /-- Per-entry content fingerprint: hashText over the entry's authoritative content fields.
     Freshness binding only (staleness/recheck), not security. Derived, never stored. -/
 def entryFingerprint (e : Entry) : String :=
+  -- CONTENT identity only: the fields a derivation actually depends on. Identity (id)
+  -- and presentation (label) are excluded: a label edit must not stale anything, and
+  -- IDs are permanent by policy (never renamed), so id stability is not implied here.
+  -- Status is excluded: an under-review transition is registry state, not content drift.
   let canon := String.intercalate "\n"
-    [e.id, e.type.typeName, e.status.statusName, e.label, e.statement,
+    [e.type.typeName, e.statement, e.createdBy,
      toString e.derivedFrom, toString e.dependsOn, e.inferenceRule.getD "",
      e.proofConfidence.getD "", reprStr e.form]
   toString (hashText canon)
@@ -43,11 +47,25 @@ def verdictJson (v : Verdict) : String := jObj
   [("id", jStr v.id), ("verdict", jStr v.verdict), ("reason", jStr v.reason),
    ("rule", jOptStr v.rule), ("assumptions", jStrArr v.assumptions)]
 
-def entryJson (e : Entry) (verdict? : Option Verdict) : String := jObj
+/-- freshness: drift against the committed provenance baseline. "stale" means the content
+    changed after the baseline - any prior verdict needs recheck, never read as old green. -/
+def freshnessOf (staleIds : List String) (baseline : Bool) (id : String) : String :=
+  if id ∈ staleIds then "stale" else if baseline then "current" else "untracked"
+
+/-- What a consumer may act on: a drifted entry's prior verdict NEVER reads as green.
+    The original verdict is preserved inside the reason. -/
+def displayVerdict (staleIds : List String) (v : Verdict) : Verdict :=
+  if v.id ∈ staleIds then
+    { v with verdict := "stale",
+             reason := s!"content changed after the provenance baseline; prior verdict '{v.verdict}' no longer covers the new content - needs recheck (not a claim of invalidity)" }
+  else v
+
+def entryJson (staleIds : List String) (baseline : Bool) (e : Entry) (verdict? : Option Verdict) : String := jObj
   [("id", jStr e.id), ("type", jStr e.type.typeName),
    ("status", jStr (Registry.effectiveStatus e).statusName),
    ("label", jStr e.label),
    ("fingerprint", jStr (entryFingerprint e)),
+   ("freshness", jStr (freshnessOf staleIds baseline e.id)),
    ("stale_now", if e.staleNow then "true" else "false"),
    ("verdict", match verdict? with | some v => jStr v.verdict | none => jNull)]
 
@@ -60,11 +78,11 @@ def registryEdges (r : Registry) : List GEdge :=
     (match e.supersededBy with | some s => [⟨EdgeKind.supersedes, s, e.id⟩] | none => []))
 
 /-- Full check report. `parseFs` are load/parse findings; everything else is derived here. -/
-def reportJson (r : Registry) (parseFs staleFs : List Finding) (today? : Option Date)
-    (dir : String) : String :=
+def reportJson (r : Registry) (parseFs staleFs : List Finding) (staleIds : List String)
+    (baseline : Bool) (cap : Nat) (today? : Option Date) (dir : String) : String :=
   let structural := globalChecks r
   let atomFs := atomTableChecks r
-  let (consResult, consFs) := consistencyCheck r 20
+  let (consResult, consFs) := consistencyCheck r cap
   let verdicts := verifyTheorems r
   let allFs := parseFs ++ staleFs ++ structural ++ atomFs ++ consFs
   let nErr := (allFs.filter (fun f => f.level == "error")).length
@@ -80,9 +98,10 @@ def reportJson (r : Registry) (parseFs staleFs : List Finding) (today? : Option 
         ("rejected_or_blocked_verdicts", jNum nBad)]),
      ("consistency", jStr consResult),
      ("findings", jArr (allFs.map findingJson)),
-     ("verdicts", jArr (verdicts.map verdictJson)),
+     ("verdicts", jArr ((verdicts.map (displayVerdict staleIds)).map verdictJson)),
      ("entries", jArr (r.all.map fun e =>
-        entryJson e (verdicts.find? (fun v => v.id == e.id)))),
+        entryJson staleIds baseline e
+          ((verdicts.find? (fun v => v.id == e.id)).map (displayVerdict staleIds)))),
      ("graph", jObj [("nodes", jNum r.all.length), ("edges", jNum edges.length),
         ("dependency_cycle_nodes", jStrArr (depCycleNodes edges)),
         ("supersedes_cycle_nodes", jStrArr (supersedesCycleNodes edges))])]
@@ -115,5 +134,5 @@ def provenanceJson (r : Registry) (today? : Option Date) (dir : String) : String
         ["DERIVED artifact: regenerate after any registry change; authoritative content lives in the type-file fields. This file is never independently writable.",
          "cites/depends are dependency edges; supersedes (superseded_by) is a HISTORY edge and never enters dependency closures or dependency cycles.",
          "upstream[id]: everything id transitively depends on. blast_radius[id]: everything that transitively cites id. A changed fingerprint means the blast radius NEEDS RECHECK - never a claim of invalidity or of changed runtime behavior.",
-         "fingerprint: non-cryptographic hashText over the entry's authoritative content fields; identical content keeps its fingerprint across label/id renames."])]
+         "fingerprint: non-cryptographic hashText over the entry's CONTENT fields (type, statement, created_by, citations, rule, confidence, form) - the fields a derivation depends on. Label edits never drift it. IDs are permanent by policy and are never renamed."])]
 end Dagcheck

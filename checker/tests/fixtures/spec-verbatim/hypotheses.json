@@ -1,0 +1,19 @@
+{
+ "H1": {
+  "id": "H1",
+  "type": "hypothesis",
+  "label": "churn-is-product-problem",
+  "statement": "User churn at current stage is primarily caused by product quality gaps.",
+  "scope_claim": "applies to retention strategy for the next 2 quarters",
+  "falsification": "Exit survey data shows > 40% of churned users cite price or competitor.",
+  "review_trigger": "Any quarterly cohort analysis.",
+  "staleness_period_days": 90,
+  "created": "2026-05-17",
+  "created_by": "human",
+  "status": "active",
+  "review_log": [],
+  "form": {
+   "atom": "P"
+  }
+ }
+}

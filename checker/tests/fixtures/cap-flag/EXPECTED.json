@@ -1,0 +1,10 @@
+{
+ "exit": 0,
+ "cap": 12,
+ "findings": [
+  [
+   "warning",
+   "consistency-over-cap"
+  ]
+ ]
+}

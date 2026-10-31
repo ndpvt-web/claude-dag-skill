@@ -1,0 +1,22 @@
+{
+ "T1": {
+  "id": "T1",
+  "type": "theorem",
+  "label": "onboarding-is-retention-lever",
+  "statement": "Improving onboarding completion rate is a higher-leverage retention investment than feature depth.",
+  "derived_from": [
+   "A1",
+   "H1"
+  ],
+  "inference_rule": "modus ponens",
+  "derivation_note": "A1: P->Q; H1: P; so Q.",
+  "proof_confidence": "CERTAIN",
+  "session_derived": "2026-05-17",
+  "created": "2026-05-17",
+  "created_by": "human",
+  "status": "active",
+  "form": {
+   "atom": "Q"
+  }
+ }
+}

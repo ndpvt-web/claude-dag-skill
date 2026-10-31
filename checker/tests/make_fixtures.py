@@ -9,7 +9,15 @@ ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
 def entry(id, typ, **kw):
     e = {"id": id, "type": typ, "label": kw.pop("label", id.lower()),
          "statement": kw.pop("statement", f"Statement of {id}."),
-         "created": kw.pop("created", "2026-05-01"), "status": kw.pop("status", "active")}
+         "created": kw.pop("created", "2026-05-01"), "created_by": kw.pop("created_by", "human"),
+         "status": kw.pop("status", "active")}
+    if typ == "definition":
+        e.setdefault("term", id.lower()); e.setdefault("scope", "project-wide")
+        e.setdefault("distinguishes_from", ["other-term"]); e.setdefault("rationale", "Disambiguation matters.")
+    if typ == "axiom":
+        e.setdefault("domain", ["strategy"]); e.setdefault("hardness", "hard")
+    if typ == "hypothesis":
+        e.setdefault("scope_claim", "current quarter")
     e.update(kw)
     return e
 
@@ -22,7 +30,7 @@ BASE = {
   "hypotheses.json": {"H1": entry("H1","hypothesis",
                         falsification="Churn persists after fixes.", review_trigger="Monthly.",
                         form={"atom":"P"}, staleness_period_days=30,
-                        review_log=[{"date":"2026-10-01","note":"ok"}])},
+                        review_log=[{"date":"2026-10-01","verdict":"valid","note":"ok"}])},
   "theorems.json": {"T1": entry("T1","theorem", derived_from=["A1","H1"],
                       inference_rule="modus ponens",
                       derivation_note="A1: P->Q; H1: P; so Q.",
@@ -46,12 +54,23 @@ def make(name, mutate, expected, base=None):
             f.write(content if isinstance(content, str) else json.dumps(content, indent=1))
     with open(os.path.join(d, "EXPECTED.json"), "w") as f:
         json.dump(expected, f, indent=1)
+    # the exponent attack must be a RAW JSON number, not a string
+    if name == "exponent-attack":
+        p = os.path.join(d, "hypotheses.json")
+        src = open(p).read().replace('"staleness_period_days": "1e1000000"',
+                                     '"staleness_period_days": 1e1000000')
+        open(p, "w").write(src)
 
 def drop(fname): return lambda files: files.__setitem__(fname, None)
 
 # 1. valid baseline
 make("valid", lambda f: None,
      {"exit": 0, "verdicts": {"T1": "verified"},
+      # D9: --premises must cover every citation; a narrower set is a loud error
+      "check_step": {"premises": ["A1"],
+                     "step": {"id":"T9","conclusion":{"atom":"Q"},
+                              "rule":"modus ponens","cites":["A1","H1"]},
+                     "exit": 2},
       "graph": {"upstream": {"T1": ["A1","H1"]}, "blast_radius": {"A1": ["T1"]},
                 "dependency_cycles": [], "supersedes_cycles": []}})
 
@@ -72,7 +91,13 @@ make("trailing-garbage",
 def m_wrong_order(f):
     f["theorems.json"]["T1"]["derived_from"] = ["H1","A1"]
 make("wrong-order-cites", m_wrong_order,
-     {"exit": 1, "verdicts": {"T1": "rejected"}})
+     {"exit": 1, "verdicts": {"T1": "rejected"},
+      # D11: a rejected theorem can never serve as a check-step premise
+      "check_step": {"premises": ["T1","A2"],
+                     "step": {"id":"T9","conclusion":{"conj":[{"atom":"Q"},{"atom":"R"}]},
+                              "rule":"conjunction introduction","cites":["T1","A2"]},
+                     "exit": 2, "verdict": "unchecked",
+                     "reason_contains": "verdict is rejected"}})
 
 # 5. dangling citation -> citation error + blocked verdict
 def m_dangling(f):
@@ -194,9 +219,25 @@ make("consistency-over-cap", m_overcap,
      {"exit": 0, "findings": [("warning","consistency-over-cap")],
       "absent_codes": ["consistency"]})
 
+# 19b. D10: --cap plumbs through the CLI (downward here: 18 atoms, cap 12 -> refusal)
+def m_nine_hyp(f):
+    hs = {}
+    for i in range(1, 10):
+        hs[f"H{i}"] = entry(f"H{i}","hypothesis", falsification="f", review_trigger="r",
+            form={"imp":[{"atom":f"X{i}"},{"atom":f"Y{i}"}]})
+        f["logic.json"][f"X{i}"] = f"x{i}"; f["logic.json"][f"Y{i}"] = f"y{i}"
+    f["hypotheses.json"] = hs
+    f["theorems.json"] = {}
+make("cap-flag", m_nine_hyp,
+     {"exit": 0, "cap": 12, "findings": [("warning","consistency-over-cap")]})
+
+# 19c. D6-class: --cap above the memory ceiling is a loud refusal, never an OOM
+make("cap-ceiling", m_nine_hyp,
+     {"exit": 2, "cap": 25})
+
 # 20. stale hypothesis auto-transitions and blocks citation
 def m_stale(f):
-    f["hypotheses.json"]["H1"]["review_log"] = [{"date":"2026-08-01","note":"old"}]
+    f["hypotheses.json"]["H1"]["review_log"] = [{"date":"2026-08-01","verdict":"valid","note":"old"}]
 make("stale-hypothesis", m_stale,
      {"exit": 1, "today": "2026-10-31",
       "findings": [("info","staleness"),("error","citation")],
@@ -224,6 +265,11 @@ def m_chain(f):
         session_derived="2026-05-18")
 make("verified-chain", m_chain,
      {"exit": 0, "verdicts": {"T1": "verified", "T2": "verified"},
+      # D11 positive: a VERIFIED theorem is a usable check-step premise
+      "check_step": {"premises": ["T1","A2"],
+                     "step": {"id":"T9","conclusion":{"conj":[{"atom":"Q"},{"atom":"R"}]},
+                              "rule":"conjunction introduction","cites":["T1","A2"]},
+                     "exit": 0, "verdict": "verified"},
       "graph": {"blast_radius": {"A1": ["T1","T2"]},
                 "upstream": {"T2": ["T1","A1","H1","A2"]}}})
 
@@ -274,8 +320,67 @@ make("bad-staleness-number", m_stale_period,
 #     2026-10-31 ONLY if 30 is parsed as 30 (the old reversed-digits bug parsed it as 3,
 #     which would ALSO be stale; instead check NOT stale with period 30 vs recent review)
 def m_period30(f):
-    f["hypotheses.json"]["H1"]["review_log"] = [{"date":"2026-10-15","note":"recent"}]
+    f["hypotheses.json"]["H1"]["review_log"] = [{"date":"2026-10-15","verdict":"valid","note":"recent"}]
 make("staleness-period-intact", m_period30,
      {"exit": 0, "today": "2026-10-31", "absent_codes": ["staleness"]})
+
+# 28. SPEC-VERBATIM entries (judge D8): the spec's own examples must load clean
+def m_spec_verbatim(f):
+    f["definitions.json"] = {"D1": {
+        "id":"D1","type":"definition","label":"user","term":"user",
+        "statement":"A user is a human operating the product interface with intent to accomplish a task.",
+        "scope":"applies to all product and retention reasoning",
+        "distinguishes_from":["automated agent","admin","API consumer"],
+        "rationale":"Without this definition, retention metrics may conflate human users with API consumers.",
+        "created":"2026-05-17","created_by":"human","status":"active"}}
+    f["axioms.json"] = {"A1": {
+        "id":"A1","type":"axiom","label":"retention-drives-growth",
+        "statement":"Sustainable revenue growth requires that LTV exceeds CAC, achievable at scale through retained customers.",
+        "domain":["strategy","growth"],"hardness":"hard","depends_on":["D1"],
+        "rationale":"Unit economics principle. Not derivable from other axioms in this registry.",
+        "created":"2026-05-17","created_by":"human","status":"active",
+        "form":{"imp":[{"atom":"P"},{"atom":"Q"}]}}}
+    f["hypotheses.json"] = {"H1": {
+        "id":"H1","type":"hypothesis","label":"churn-is-product-problem",
+        "statement":"User churn at current stage is primarily caused by product quality gaps.",
+        "scope_claim":"applies to retention strategy for the next 2 quarters",
+        "falsification":"Exit survey data shows > 40% of churned users cite price or competitor.",
+        "review_trigger":"Any quarterly cohort analysis.",
+        "staleness_period_days":90,"created":"2026-05-17","created_by":"human","status":"active",
+        "review_log":[],"form":{"atom":"P"}}}
+    f["theorems.json"] = {"T1": {
+        "id":"T1","type":"theorem","label":"onboarding-is-retention-lever",
+        "statement":"Improving onboarding completion rate is a higher-leverage retention investment than feature depth.",
+        "derived_from":["A1","H1"],"inference_rule":"modus ponens",
+        "derivation_note":"A1: P->Q; H1: P; so Q.",
+        "proof_confidence":"CERTAIN","session_derived":"2026-05-17","created":"2026-05-17",
+        "created_by":"human","status":"active","form":{"atom":"Q"}}}
+make("spec-verbatim", m_spec_verbatim,
+     {"exit": 0, "today": "2026-06-01", "verdicts": {"T1": "verified"}})
+
+# 29. missing created_by (universal mandatory) -> parse error
+make("missing-created-by",
+     lambda f: f["axioms.json"]["A1"].pop("created_by"),
+     {"exit": 1, "findings": [("error","parse")]})
+
+# 30. bad hardness value
+make("bad-hardness",
+     lambda f: f["axioms.json"]["A1"].__setitem__("hardness","squishy"),
+     {"exit": 1, "findings": [("error","parse")]})
+
+# 31. D6: exponent blowup attempt -> loud error, and it must return FAST
+make("exponent-attack",
+     lambda f: f["hypotheses.json"]["H1"].__setitem__("staleness_period_days", "1e1000000"),
+     {"exit": 1, "findings": [("error","parse")]})
+
+# 32. D6: mantissa flood -> loud error
+make("digit-flood",
+     lambda f: f["hypotheses.json"]["H1"].__setitem__("staleness_period_days", int("1"*50)),
+     {"exit": 1, "findings": [("error","parse")]})
+
+# 33. D6: absurd-but-parseable staleness period -> semantic bound error
+make("staleness-too-large",
+     lambda f: f["hypotheses.json"]["H1"].__setitem__("staleness_period_days", 99999),
+     {"exit": 1, "findings": [("error","parse")]})
 
 print("fixtures generated in", ROOT)

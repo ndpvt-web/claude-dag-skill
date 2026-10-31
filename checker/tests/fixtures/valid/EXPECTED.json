@@ -3,6 +3,23 @@
  "verdicts": {
   "T1": "verified"
  },
+ "check_step": {
+  "premises": [
+   "A1"
+  ],
+  "step": {
+   "id": "T9",
+   "conclusion": {
+    "atom": "Q"
+   },
+   "rule": "modus ponens",
+   "cites": [
+    "A1",
+    "H1"
+   ]
+  },
+  "exit": 2
+ },
  "graph": {
   "upstream": {
    "T1": [

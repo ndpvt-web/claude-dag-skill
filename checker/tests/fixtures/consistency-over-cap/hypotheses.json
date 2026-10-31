@@ -5,7 +5,9 @@
   "label": "h1",
   "statement": "Statement of H1.",
   "created": "2026-05-01",
+  "created_by": "human",
   "status": "active",
+  "scope_claim": "current quarter",
   "falsification": "f",
   "review_trigger": "r",
   "form": {
@@ -25,7 +27,9 @@
   "label": "h2",
   "statement": "Statement of H2.",
   "created": "2026-05-01",
+  "created_by": "human",
   "status": "active",
+  "scope_claim": "current quarter",
   "falsification": "f",
   "review_trigger": "r",
   "form": {
@@ -45,7 +49,9 @@
   "label": "h3",
   "statement": "Statement of H3.",
   "created": "2026-05-01",
+  "created_by": "human",
   "status": "active",
+  "scope_claim": "current quarter",
   "falsification": "f",
   "review_trigger": "r",
   "form": {
@@ -65,7 +71,9 @@
   "label": "h4",
   "statement": "Statement of H4.",
   "created": "2026-05-01",
+  "created_by": "human",
   "status": "active",
+  "scope_claim": "current quarter",
   "falsification": "f",
   "review_trigger": "r",
   "form": {
@@ -85,7 +93,9 @@
   "label": "h5",
   "statement": "Statement of H5.",
   "created": "2026-05-01",
+  "created_by": "human",
   "status": "active",
+  "scope_claim": "current quarter",
   "falsification": "f",
   "review_trigger": "r",
   "form": {
@@ -105,7 +115,9 @@
   "label": "h6",
   "statement": "Statement of H6.",
   "created": "2026-05-01",
+  "created_by": "human",
   "status": "active",
+  "scope_claim": "current quarter",
   "falsification": "f",
   "review_trigger": "r",
   "form": {
@@ -125,7 +137,9 @@
   "label": "h7",
   "statement": "Statement of H7.",
   "created": "2026-05-01",
+  "created_by": "human",
   "status": "active",
+  "scope_claim": "current quarter",
   "falsification": "f",
   "review_trigger": "r",
   "form": {
@@ -145,7 +159,9 @@
   "label": "h8",
   "statement": "Statement of H8.",
   "created": "2026-05-01",
+  "created_by": "human",
   "status": "active",
+  "scope_claim": "current quarter",
   "falsification": "f",
   "review_trigger": "r",
   "form": {
@@ -165,7 +181,9 @@
   "label": "h9",
   "statement": "Statement of H9.",
   "created": "2026-05-01",
+  "created_by": "human",
   "status": "active",
+  "scope_claim": "current quarter",
   "falsification": "f",
   "review_trigger": "r",
   "form": {
@@ -185,7 +203,9 @@
   "label": "h10",
   "statement": "Statement of H10.",
   "created": "2026-05-01",
+  "created_by": "human",
   "status": "active",
+  "scope_claim": "current quarter",
   "falsification": "f",
   "review_trigger": "r",
   "form": {
@@ -205,7 +225,9 @@
   "label": "h11",
   "statement": "Statement of H11.",
   "created": "2026-05-01",
+  "created_by": "human",
   "status": "active",
+  "scope_claim": "current quarter",
   "falsification": "f",
   "review_trigger": "r",
   "form": {

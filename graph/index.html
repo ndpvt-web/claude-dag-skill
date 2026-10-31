@@ -55,6 +55,9 @@
   .legend { color:var(--dim); font-size:12px; flex-basis:100%; }
   .legend b { color:var(--ink); font-weight:600; }
   #cycwarn { color:var(--err); font-size:12px; font-weight:600; }
+  #zoomctl button { background:var(--panel); color:var(--ink); border:1px solid #334050;
+                    border-radius:6px; padding:3px 10px; margin-left:4px; cursor:pointer; }
+  #zoomctl button:hover { border-color:var(--dep); }
   /* narrow screens: sidebar stacks below the graph, both full-width.
      The .force-mobile rules are the SAME declarations, applied by the #mobile hash
      so the stacked layout can be exercised at any viewport width. */
@@ -72,6 +75,9 @@
   <label id="drop">load provenance.json <input type="file" id="file" accept=".json" hidden></label>
   <span id="srcbadge">no file loaded</span>
   <span id="cycwarn"></span>
+  <span id="zoomctl">
+    <button type="button" onclick="zoomFit()">fit</button><button type="button" onclick="zoomStep(1.25)">+</button><button type="button" onclick="zoomStep(0.8)">-</button><button type="button" onclick="zoom100()">100%</button>
+  </span>
   <span class="legend"><b>blue arrow</b> dependency &nbsp;<b>purple dashed</b> history (never in dependency closures) &nbsp;<b>red</b> cycle &nbsp;|&nbsp; status bar: <b style="color:var(--ok)">verified</b> <b style="color:var(--err)">rejected</b> <b style="color:var(--warn)">blocked</b> <b style="color:var(--unc)">unchecked</b> &nbsp;|&nbsp; click a node: <b style="color:var(--ok)">green</b> = upstream chain, <b style="color:var(--err)">red outline</b> = blast radius (needs recheck)</span>
 </header>
 <main>
@@ -82,7 +88,10 @@
 "use strict";
 const COLS = [["definition"],["hypothesis"],["axiom"],["theorem"],["tombstone"]];
 const COLX = i => 50 + i*180, ROWY = r => 60 + r*80, W=150, H=48;
-let DATA=null, SEL=null;
+let DATA=null, SEL=null, zoomMode="fit", zoomMan=1;
+function zoomFit(){ zoomMode="fit"; render(); }
+function zoom100(){ zoomMode="man"; zoomMan=1; render(); }
+function zoomStep(f){ if(zoomMode==="fit"){ zoomMode="man"; zoomMan=1; } zoomMan=Math.min(3, Math.max(0.2, zoomMan*f)); render(); }
 
 function load(text){
   const j = JSON.parse(text);
@@ -134,11 +143,21 @@ function render(){
   const w=Math.max(0,...Object.values(pos).map(p=>p.x))+W+70;
   const h=Math.max(0,...Object.values(pos).map(p=>p.y))+H+60;
   svg.setAttribute("width",w); svg.setAttribute("height",h);
-  // fit-to-width: the right column never slides under the sidebar; scroll only if still wider
+  // Zoom. Desktop: fit-to-width so the right column never slides under the sidebar.
+  // Narrow screens: never shrink below ZOOM_FLOOR (legibility beats overview) - the
+  // canvas scrolls horizontally instead, and the fit/+/-/100% controls give manual zoom.
   const wrap=document.getElementById("canvaswrap");
   const avail=wrap.clientWidth-36;
-  const scale=Math.min(1, avail/w);
-  document.getElementById("zoom").style.transform = scale<1 ? `scale(${scale})` : "";
+  const narrow = window.innerWidth <= 760;
+  const ZOOM_FLOOR = 0.7;
+  let scale;
+  if (zoomMode === "fit") {
+    scale = Math.min(1, avail/w);
+    if (narrow) scale = Math.max(scale, ZOOM_FLOOR);
+  } else {
+    scale = zoomMan;
+  }
+  document.getElementById("zoom").style.transform = scale<1||scale>1 ? `scale(${scale})` : "";
   const NS="http://www.w3.org/2000/svg";
   const defs=document.createElementNS(NS,"defs");
   defs.innerHTML =

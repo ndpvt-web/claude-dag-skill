@@ -4,6 +4,32 @@
   "T1": "verified",
   "T2": "verified"
  },
+ "check_step": {
+  "premises": [
+   "T1",
+   "A2"
+  ],
+  "step": {
+   "id": "T9",
+   "conclusion": {
+    "conj": [
+     {
+      "atom": "Q"
+     },
+     {
+      "atom": "R"
+     }
+    ]
+   },
+   "rule": "conjunction introduction",
+   "cites": [
+    "T1",
+    "A2"
+   ]
+  },
+  "exit": 0,
+  "verdict": "verified"
+ },
  "graph": {
   "blast_radius": {
    "A1": [

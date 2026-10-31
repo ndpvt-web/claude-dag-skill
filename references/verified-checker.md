@@ -9,11 +9,21 @@ derivations, and reports.
 
 ```
 lake build                                    # in checker/
-dagcheck check <registry-dir> [--today YYYY-MM-DD]   # validate + verify; JSON report
+dagcheck check <registry-dir> [--today YYYY-MM-DD] [--cap N]   # validate + verify; JSON report
 dagcheck graph <registry-dir> [--today YYYY-MM-DD]   # emit provenance.json (see graph-model.md)
 dagcheck check-step <registry-dir> --premises '["A1","H1"]' \
     --step '{"id":"T9","conclusion":<form-json>,"rule":"modus ponens","cites":["A1","H1"]}'
 ```
+
+`--cap N` raises the consistency ceiling from the default 20 distinct atoms. N above
+20 is refused: enumeration is 2^N and materialized, so an uncapped flag would be a
+memory attack, not a feature. Split the registry or reduce distinct atoms instead.
+
+`check-step` checks the step against EXACTLY the `--premises` set: every citation in
+`--step.cites` must be listed there (a narrower set is a usage error), and a theorem
+enters the environment only when its own derivation is `verified` in the registry -
+the same prerequisite discipline as the full checker, so no green chain can stand on
+rejected work.
 
 `check` exits 1 when any error-severity finding or any rejected/blocked verdict
 exists, else 0. Without `--today`, time-based staleness is skipped and structural
@@ -48,7 +58,10 @@ Verdict classes:
   ("conjunction + modus ponens", instantiation, analogy), missing encodings. This is
   an honest non-verdict, never a silent pass. Unsupported reasoning stays unchecked
   by design.
-- **stale / needs recheck** - see Freshness below. Never a claim of invalidity.
+- **stale / needs recheck** - the entry's content changed after the committed
+  provenance baseline. A drifted entry's prior verdict is NEVER reported as green:
+  the report shows `stale` with the prior verdict preserved inside the reason. Never
+  a claim of invalidity.
 
 ## The coverage contract (atom table)
 
@@ -91,14 +104,31 @@ arbitrary conclusions, and a single failed derivation proves no nonderivability.
 
 ## Freshness (changed inputs make verification stale)
 
-Each entry has a content fingerprint (non-cryptographic hash over its authoritative
-fields, computed at report time, never stored in the type files). `dagcheck graph`
+Each entry has a content fingerprint (non-cryptographic hash over exactly the fields
+a derivation depends on: type, statement, created_by, citations, inference rule,
+confidence, and the encoded form - computed at report time, never stored in the type
+files). Identity and presentation are excluded: editing a `label` never drifts a
+fingerprint, and entry IDs are permanent by policy (never renamed), so the fingerprint
+says nothing about id stability. Status transitions (active/under-review) are registry
+state, not content drift. `dagcheck graph`
 emits `provenance.json` carrying those fingerprints; commit it as the freshness
 baseline. On later `check` runs, drifted entries produce `stale-fingerprint` warnings
 naming the changed entry **and its blast radius** (the transitive citers) as needing
 recheck. Removed and new ids are reported likewise. Drift wording is deliberately
 narrow: prior verification no longer covers the new content - nothing about validity,
 and nothing about runtime behavior.
+
+## Registry schema and adversarial bounds
+
+The parser validates against the field sets of `references/registry-spec.md`
+verbatim (`created_by` is universally mandatory; D entries need
+term/scope/distinguishes_from/rationale; A entries domain/hardness/rationale; H
+entries scope_claim/falsification/review_trigger; T entries
+derived_from/inference_rule/derivation_note/proof_confidence/session_derived).
+Unknown fields are loud errors. `form` is the checker's own documented extension.
+Defensive bounds: JSON number exponents beyond |99| and mantissas beyond 40 digits
+are parse errors (no exponentiation blowups); staleness_period_days is bounded to
+[0, 36500]; the consistency ceiling is 20 distinct atoms.
 
 ## What the checker does not claim
 

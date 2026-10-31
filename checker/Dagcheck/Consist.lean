@@ -31,7 +31,7 @@ def satAll (v : Assign) (ps : List (String × Form)) : Bool :=
 def consistent (ps : List (String × Form)) (cap : Nat) : Except String Bool :=
   let atoms := atomsOf ps
   if atoms.length > cap then
-    .error s!"consistency check refused: {atoms.length} atoms exceed cap {cap} (2^n enumeration); re-run with an explicit higher cap"
+    .error s!"consistency check refused: {atoms.length} atoms exceed cap {cap} (2^n enumeration); re-run with --cap N up to the ceiling 20 (dagcheck check --cap N)"
   else
     .ok ((allValsOver atoms).any (fun v => satAll v ps))
 

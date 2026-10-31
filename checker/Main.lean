@@ -25,6 +25,7 @@ def stripFlags : List String → List String
   | "--today" :: _ :: rest => stripFlags rest
   | "--premises" :: _ :: rest => stripFlags rest
   | "--step" :: _ :: rest => stripFlags rest
+  | "--cap" :: _ :: rest => stripFlags rest
   | a :: rest => a :: stripFlags rest
   | [] => []
 
@@ -61,13 +62,13 @@ def loadDir (dir : String) (today? : Option Date) : IO (Registry × List Finding
 /-- Freshness drift: compare live content fingerprints against the committed provenance
     baseline (<dir>/provenance.json). Drift NEVER claims invalidity; it names exactly which
     entries changed and whose verification therefore needs recheck. -/
-def driftFindings (dir : String) (reg : Registry) : IO (List Finding) := do
+def driftFindings (dir : String) (reg : Registry) : IO (List Finding × List String) := do
   let path := s!"{dir}/provenance.json"
   if !(← System.FilePath.pathExists path) then
-    return [finfo "no-baseline" "no provenance.json baseline; run `dagcheck graph <dir> > <dir>/provenance.json` and commit it to enable freshness tracking"]
+    return ([finfo "no-baseline" "no provenance.json baseline; run `dagcheck graph <dir> > <dir>/provenance.json` and commit it to enable freshness tracking"], [])
   let content ← IO.FS.readFile path
   match parseJsonStrict content with
-  | .error e => return [fwarn "bad-baseline" s!"provenance.json is not strict JSON ({e}); regenerate it with `dagcheck graph`"]
+  | .error e => return ([fwarn "bad-baseline" s!"provenance.json is not strict JSON ({e}); regenerate it with `dagcheck graph`"], [])
   | .ok j =>
     let nodes := match (j.getObjVal? "nodes").toOption with
       | some (.arr arr) => arr.toList
@@ -92,7 +93,7 @@ def driftFindings (dir : String) (reg : Registry) : IO (List Finding) := do
       fwarn "stale-fingerprint" s!"{id}: present in baseline but gone from the registry; entries that cited it need recheck")
     let newFs := newIds.map (fun (id, _) =>
       finfo "new-since-baseline" s!"{id}: not in the provenance baseline yet; regenerate provenance.json after review")
-    return driftFs ++ remFs ++ newFs
+    return (driftFs ++ remFs ++ newFs, drifted.map Prod.fst)
 
 /-- Decode a check-step --step object. -/
 def parseStepArg (s : String) : Except String (String × Form × String × List String) := do
@@ -111,7 +112,7 @@ def parseStepArg (s : String) : Except String (String × Form × String × List 
 
 def usage : String := String.intercalate "\n"
   ["dagcheck - verified checker for the DAG registry (read-only)",
-   "  dagcheck check <registry-dir> [--today YYYY-MM-DD]",
+   "  dagcheck check <registry-dir> [--today YYYY-MM-DD] [--cap N]",
    "  dagcheck graph <registry-dir> [--today YYYY-MM-DD]",
    "  dagcheck check-step <registry-dir> --premises '<json-array-of-ids>' --step '<json-object>'"]
 
@@ -145,6 +146,12 @@ def main (args : List String) : IO UInt32 := do
               if loadFs.any (fun f => f.level == "error") then
                 IO.eprintln "registry has load errors; fix them before check-step"
                 return 2
+              -- D9: --premises is the declared environment for this step. Every cite must
+              -- be listed there; the check uses exactly those premises, never more.
+              let undeclared := cites.filter (fun c => c ∉ pids)
+              if !undeclared.isEmpty then
+                IO.eprintln s!"--step cites {undeclared} not listed in --premises; the declared premise set must cover every citation"
+                return 2
               match ruleSpecOfName rname with
               | .outside out =>
                 IO.println (jObj [("verdict", jStr "unchecked"),
@@ -158,12 +165,34 @@ def main (args : List String) : IO UInt32 := do
                   IO.println (jObj [("verdict", jStr "rejected"),
                     ("reason", jStr s!"unmapped atom(s) {undeclared}: absent from logic.json; encoding incomplete")])
                   return 1
-                let envAll := reg.entries.filterMap (fun (e : Entry) =>
-                  if Registry.effectiveStatus e == Status.active then e.form.map (fun f => (e.id, f)) else none)
+                -- D11: the environment is exactly the --premises entries, and a theorem
+                -- enters it ONLY with a verified derivation - the same prerequisite
+                -- discipline as the full checker. No green chains on rejected work.
+                let verdicts := verifyTheorems reg
+                let usable (e : Entry) : Bool :=
+                  Registry.effectiveStatus e == Status.active &&
+                  match e.type with
+                  | .theorem => verdicts.any (fun v => v.id == e.id && v.verdict == "verified")
+                  | _ => true
+                let envAll := pids.filterMap (fun pid =>
+                  match reg.entries.find? (fun e => e.id == pid) with
+                  | some e => if usable e then e.form.map (fun f => (e.id, f)) else none
+                  | none => none)
                 let missing := cites.filter (fun c => !(envAll.any (fun p => p.1 == c)))
                 if !missing.isEmpty then
+                  let why := missing.map (fun c =>
+                    match reg.entries.find? (fun e => e.id == c) with
+                    | none => s!"{c}: unknown id"
+                    | some e =>
+                      if Registry.effectiveStatus e != Status.active then
+                        s!"{c}: {(Registry.effectiveStatus e).statusName}, blocked from citation"
+                      else if e.type == EntryType.theorem then
+                        match verdicts.find? (fun v => v.id == c) with
+                        | some v => s!"{c}: theorem verdict is {v.verdict}, not verified"
+                        | none => s!"{c}: theorem has no verdict"
+                      else s!"{c}: no checkable encoding (form)")
                   IO.println (jObj [("verdict", jStr "unchecked"),
-                    ("reason", jStr s!"cited ids lack active checkable encodings: {missing}")])
+                    ("reason", jStr ("premises unusable: " ++ String.intercalate "; " why))])
                   return 2
                 let attempt : Option Rule := match spec with
                   | .single rule =>
@@ -191,12 +220,22 @@ def main (args : List String) : IO UInt32 := do
       else
         let (reg, loadFs) ← loadDir dir today?
         if cmd == "check" then
-          let driftFs ← driftFindings dir reg
-          IO.println (reportJson reg (loadFs ++ driftFs) [] today? dir)
+          let capRaw := match getFlag rest "--cap" with
+            | some s => s.toNat?.getD 20
+            | none => 20
+          -- ceiling: enumeration is 2^n and materialized; never let a flag turn the
+          -- checker into a memory bomb (same defect class as the exponent attack)
+          if capRaw > 20 then
+            IO.eprintln s!"--cap {capRaw} unsupported: ceiling is 20 (2^20 enumeration is the memory bound); split the registry or reduce distinct atoms"
+            return 2
+          let cap := capRaw
+          let (driftFs, staleIds) ← driftFindings dir reg
+          let baseline := ← System.FilePath.pathExists s!"{dir}/provenance.json"
+          IO.println (reportJson reg (loadFs ++ driftFs) [] staleIds baseline cap today? dir)
           -- loadFs already includes parse/stale; count errors across full finding set
           let structural := globalChecks reg
           let atomFs := atomTableChecks reg
-          let (_, consFs) := consistencyCheck reg 20
+          let (_, consFs) := consistencyCheck reg cap
           let verdicts := verifyTheorems reg
           let allFs := loadFs ++ driftFs ++ structural ++ atomFs ++ consFs
           let nErr := (allFs.filter (fun f => f.level == "error")).length

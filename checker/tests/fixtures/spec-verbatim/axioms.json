@@ -1,0 +1,30 @@
+{
+ "A1": {
+  "id": "A1",
+  "type": "axiom",
+  "label": "retention-drives-growth",
+  "statement": "Sustainable revenue growth requires that LTV exceeds CAC, achievable at scale through retained customers.",
+  "domain": [
+   "strategy",
+   "growth"
+  ],
+  "hardness": "hard",
+  "depends_on": [
+   "D1"
+  ],
+  "rationale": "Unit economics principle. Not derivable from other axioms in this registry.",
+  "created": "2026-05-17",
+  "created_by": "human",
+  "status": "active",
+  "form": {
+   "imp": [
+    {
+     "atom": "P"
+    },
+    {
+     "atom": "Q"
+    }
+   ]
+  }
+ }
+}

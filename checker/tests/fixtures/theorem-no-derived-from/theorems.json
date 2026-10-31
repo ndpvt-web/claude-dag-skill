@@ -5,6 +5,7 @@
   "label": "t1",
   "statement": "Statement of T1.",
   "created": "2026-05-01",
+  "created_by": "human",
   "status": "active",
   "inference_rule": "modus ponens",
   "derivation_note": "A1: P->Q; H1: P; so Q.",
