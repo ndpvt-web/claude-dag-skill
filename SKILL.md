@@ -242,6 +242,29 @@ Never for routine proof chains.
 - Re-use deprecated IDs
 - Write entries as individual markdown files — all entries go into their type-level JSON file
 
+## Verified Checker (mechanical verification)
+
+The `checker/` directory is a Lean 4 verified checker for this registry. It is the
+authoritative verdict on anything machine-checkable; the agent's own judgment is not.
+
+- After any `/dag derive` that uses a rule from the machine-checkable fragment, run
+  `dagcheck check-step` (see `references/verified-checker.md`) before writing, and
+  `dagcheck check` after writing. A rejected verdict blocks the write, same as any
+  other guard.
+- `/dag audit` includes: `dagcheck check` (validation + verdicts) and, when a
+  committed `provenance.json` baseline exists, its `stale-fingerprint` findings are
+  the impact list — entries named there need recheck. Never present a drifted entry
+  as verified.
+- Regenerate `provenance.json` with `dagcheck graph` after every accepted change and
+  commit it with the registry. It is a derived artifact; the type files stay the only
+  source of truth.
+- Verdict vocabulary: verified / rejected / blocked / unchecked / stale. Unchecked is
+  an honest non-verdict for prose rules, instantiation, and analogy — say so plainly,
+  never imply the checker passed them.
+- The checker never mutates the registry. Citation order is rule-argument order for
+  machine-checkable rules (see references/verified-checker.md for the contract and
+  migration note).
+
 ## References
 
 - **Entry format specs + example registry**: references/registry-spec.md

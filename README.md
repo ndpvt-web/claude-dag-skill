@@ -37,6 +37,33 @@ Everything is stored in a folder called `.dag/` inside your project, as simple J
 | `/dag audit` | A deeper check across everything, looking for contradictions |
 | `/dag deprecate [ID]` | Retire an old fact without deleting it, and check what depended on it |
 
+
+## Checking the notebook with a real proof checker
+
+This repo also ships `checker/` — a small, independent program (written in Lean 4, a
+proof-checking language) that reads the `.dag/registry/` files and actually verifies
+them:
+
+- Every conclusion that uses a checkable rule is re-derived by the checker. If the
+  cited facts do not produce the conclusion, the entry is **rejected**, not excused.
+- Reasoning the checker cannot machine-check (free-form prose rules, analogies) is
+  marked **unchecked** — never silently passed.
+- It draws the dependency graph: for any fact, the **upstream chain** (everything it
+  rests on) and the **blast radius** (everything that would need a recheck if it
+  changed). Changed facts never stay "old green" — a committed fingerprint baseline
+  makes any edit show up as "needs recheck" for exactly its blast radius.
+- It never edits your files. It reads, checks, and reports.
+
+```
+cd checker && lake build
+.lake/build/bin/dagcheck check path/to/.dag/registry --today 2026-10-31
+.lake/build/bin/dagcheck graph path/to/.dag/registry > path/to/.dag/registry/provenance.json
+```
+
+Open `graph/index.html` in any browser and load that `provenance.json` to see the
+graph (fully offline; nothing is sent anywhere). Details:
+`references/verified-checker.md` and `references/graph-model.md`.
+
 ## How to install it
 
 1. Copy this whole folder into `~/.claude/skills/DAG/`
