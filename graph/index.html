@@ -32,6 +32,9 @@
   .node.v-rejected .bar { fill:var(--err); }
   .node.v-blocked .bar { fill:var(--warn); }
   .node.v-unchecked .bar { fill:var(--unc); }
+  .node.v-stale .bar { fill:#e3d26b; }
+  .node.v-upstream-stale .bar { fill:#e3a56b; }
+  .vchip.upstream-stale { background:#e3a56b; color:#261a05; }
   .node.retired rect { opacity:.55; }
   .edge { stroke:var(--dep); stroke-width:1.4; fill:none; opacity:.8; marker-end:url(#arrDep); }
   .edge.hist { stroke:var(--hist); stroke-dasharray:5 4; marker-end:url(#arrHist); }
@@ -78,7 +81,7 @@
   <span id="zoomctl">
     <button type="button" onclick="zoomFit()">fit</button><button type="button" onclick="zoomStep(1.25)">+</button><button type="button" onclick="zoomStep(0.8)">-</button><button type="button" onclick="zoom100()">100%</button>
   </span>
-  <span class="legend"><b>blue arrow</b> dependency &nbsp;<b>purple dashed</b> history (never in dependency closures) &nbsp;<b>red</b> cycle &nbsp;|&nbsp; status bar: <b style="color:var(--ok)">verified</b> <b style="color:var(--err)">rejected</b> <b style="color:var(--warn)">blocked</b> <b style="color:var(--unc)">unchecked</b> &nbsp;|&nbsp; click a node: <b style="color:var(--ok)">green</b> = upstream chain, <b style="color:var(--err)">red outline</b> = blast radius (needs recheck)</span>
+  <span class="legend"><b>blue arrow</b> dependency &nbsp;<b>purple dashed</b> history (never in dependency closures) &nbsp;<b>red</b> cycle &nbsp;|&nbsp; status bar: <b style="color:var(--ok)">verified</b> <b style="color:var(--err)">rejected</b> <b style="color:var(--warn)">blocked</b> <b style="color:var(--unc)">unchecked</b> <b style="color:#e3d26b">stale</b> <b style="color:#e3a56b">upstream-stale</b> (needs recheck) &nbsp;|&nbsp; click a node: <b style="color:var(--ok)">green</b> = upstream chain, <b style="color:var(--err)">red outline</b> = blast radius (needs recheck)</span>
 </header>
 <main>
   <div id="canvaswrap"><div id="zoom"><svg id="svg" xmlns="http://www.w3.org/2000/svg"></svg></div></div>
@@ -93,9 +96,29 @@ function zoomFit(){ zoomMode="fit"; render(); }
 function zoom100(){ zoomMode="man"; zoomMan=1; render(); }
 function zoomStep(f){ if(zoomMode==="fit"){ zoomMode="man"; zoomMan=1; } zoomMan=Math.min(3, Math.max(0.2, zoomMan*f)); render(); }
 
+function validProv(j){
+  if (!j || typeof j !== "object") return "top level must be an object";
+  if (j.spec !== "dagcheck-provenance/v1") return "not a dagcheck provenance/v1 file";
+  if (!Array.isArray(j.nodes)) return "nodes must be an array";
+  if (!Array.isArray(j.edges)) return "edges must be an array";
+  if (j.nodes.length > 100000) return "too many nodes (resource bound)";
+  if (j.edges.length > 500000) return "too many edges (resource bound)";
+  const kinds = {cites:1, depends:1, supersedes:1};
+  for (const n of j.nodes){
+    if (!n || typeof n.id !== "string" || typeof n.type !== "string") return "every node needs string id and type";
+    if (n.verdict !== undefined && n.verdict !== null && typeof n.verdict !== "string") return "node verdict must be a string";
+    if (n.label !== undefined && typeof n.label !== "string") return "node label must be a string";
+  }
+  for (const e of j.edges){
+    if (!e || typeof e.from !== "string" || typeof e.to !== "string" || !(e.kind in kinds))
+      return "every edge needs string from/to and a known kind (cites/depends/supersedes)";
+  }
+  return null;
+}
 function load(text){
   const j = JSON.parse(text);
-  if (j.spec !== "dagcheck-provenance/v1") throw new Error("not a dagcheck provenance/v1 file");
+  const bad = validProv(j);
+  if (bad) throw new Error("invalid provenance.json: " + bad);
   DATA=j; SEL=null;
   const src = j.generated_from || "?";
   const badge = document.getElementById("srcbadge");
@@ -126,7 +149,12 @@ function layout(nodes){
   return pos;
 }
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
-function vclass(v){return v? "v-"+v : "";}
+function vclass(n){
+  const v = n.verdict, f = n.freshness;
+  if (n.upstream_stale === "true" || v === "upstream-stale" || f === "upstream-stale") return "v-upstream-stale";
+  if (n.stale_now === "true" || v === "stale" || f === "stale") return "v-stale";
+  return v ? "v-"+v : "";
+}
 
 function render(){
   if(!DATA) return;
@@ -180,7 +208,7 @@ function render(){
   nodes.forEach(n=>{
     const g=document.createElementNS(NS,"g");
     const retired = n.status==="deprecated";
-    g.setAttribute("class","node "+vclass(n.verdict)+(retired?" retired":"")+
+    g.setAttribute("class","node "+vclass(n)+(retired?" retired":"")+
       (SEL===n.id?" sel":"")+(blast.has(n.id)?" blast":"")+(up.has(n.id)?" up":""));
     const r=document.createElementNS(NS,"rect");
     r.setAttribute("x",pos[n.id].x); r.setAttribute("y",pos[n.id].y);
@@ -198,7 +226,9 @@ function render(){
     const t2=document.createElementNS(NS,"text");
     t2.setAttribute("x",pos[n.id].x+11); t2.setAttribute("y",pos[n.id].y+34);
     t2.setAttribute("class","sub");
-    t2.textContent=(n.verdict? n.verdict : n.type)+(n.stale_now?" - stale":"");
+    t2.textContent=(n.upstream_stale==="true"||n.verdict==="upstream-stale"||n.freshness==="upstream-stale") ? "upstream-stale - needs recheck"
+      : (n.stale_now==="true"||n.verdict==="stale"||n.freshness==="stale") ? "stale - needs recheck"
+      : (n.verdict ? n.verdict : n.type);
     const t3=document.createElementNS(NS,"text");
     t3.setAttribute("x",pos[n.id].x+11); t3.setAttribute("y",pos[n.id].y+45);
     t3.setAttribute("class","sub");
@@ -208,10 +238,10 @@ function render(){
     svg.appendChild(g);
   });
   const selNode=nodes.find(n=>n.id===SEL);
-  const pill=id=>`<span class="pill" onclick="SEL=${JSON.stringify(id)};render()">${esc(id)}</span>`;
+  const pill=id=>`<span class="pill" data-pid="${esc(id)}">${esc(id)}</span>`;
   const vchip=v=>v?`<span class="vchip ${v}">${esc(v)}</span>`:"";
   side.innerHTML = selNode ? `
-    <h2>${esc(selNode.id)}${vchip(selNode.verdict)}${selNode.stale_now?'<span class="vchip stale">stale - needs recheck</span>':''}</h2>
+    <h2>${esc(selNode.id)}${vchip(selNode.verdict)}${(selNode.stale_now==="true"||selNode.freshness==="stale")?'<span class="vchip stale">stale - needs recheck</span>':''}${((selNode.upstream_stale==="true"||selNode.freshness==="upstream-stale")&&selNode.stale_now!=="true"&&selNode.freshness!=="stale")?'<span class="vchip upstream-stale">upstream-stale - needs recheck</span>':''}</h2>
     <div class="meta">${esc(selNode.type)} / ${esc(selNode.status)}
 fingerprint ${esc(selNode.fingerprint)}</div>
     <h3>Upstream chain - what this rests on (${up.size})</h3>
@@ -224,6 +254,9 @@ fingerprint ${esc(selNode.fingerprint)}</div>
   : `<h2>${nodes.length} entries, ${edges.length} edges</h2>
      <p class="meta">generated from ${esc(DATA.generated_from||"?")}${DATA.today?"\nas of "+esc(DATA.today):""}</p>
      <h3>Notes</h3><div class="meta">${(DATA.notes||[]).map(esc).join("\n\n")}</div>`;
+  side.querySelectorAll(".pill").forEach(p=>{
+    p.addEventListener("click", ()=>{ SEL = p.dataset.pid; render(); });
+  });
 }
 window.addEventListener("resize", ()=>render());
 function applyMobileHash(){

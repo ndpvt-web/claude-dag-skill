@@ -1,0 +1,302 @@
+{
+ "H0": {
+  "id": "H0",
+  "type": "hypothesis",
+  "label": "h0",
+  "statement": "Statement of H0.",
+  "created": "2026-05-01",
+  "created_by": "human",
+  "status": "active",
+  "scope_claim": "current quarter",
+  "falsification": "f",
+  "review_trigger": "r",
+  "form": {
+   "atom": "p0"
+  }
+ },
+ "H1": {
+  "id": "H1",
+  "type": "hypothesis",
+  "label": "h1",
+  "statement": "Statement of H1.",
+  "created": "2026-05-01",
+  "created_by": "human",
+  "status": "active",
+  "scope_claim": "current quarter",
+  "falsification": "f",
+  "review_trigger": "r",
+  "form": {
+   "atom": "p1"
+  }
+ },
+ "H2": {
+  "id": "H2",
+  "type": "hypothesis",
+  "label": "h2",
+  "statement": "Statement of H2.",
+  "created": "2026-05-01",
+  "created_by": "human",
+  "status": "active",
+  "scope_claim": "current quarter",
+  "falsification": "f",
+  "review_trigger": "r",
+  "form": {
+   "atom": "p2"
+  }
+ },
+ "H3": {
+  "id": "H3",
+  "type": "hypothesis",
+  "label": "h3",
+  "statement": "Statement of H3.",
+  "created": "2026-05-01",
+  "created_by": "human",
+  "status": "active",
+  "scope_claim": "current quarter",
+  "falsification": "f",
+  "review_trigger": "r",
+  "form": {
+   "atom": "p3"
+  }
+ },
+ "H4": {
+  "id": "H4",
+  "type": "hypothesis",
+  "label": "h4",
+  "statement": "Statement of H4.",
+  "created": "2026-05-01",
+  "created_by": "human",
+  "status": "active",
+  "scope_claim": "current quarter",
+  "falsification": "f",
+  "review_trigger": "r",
+  "form": {
+   "atom": "p4"
+  }
+ },
+ "H5": {
+  "id": "H5",
+  "type": "hypothesis",
+  "label": "h5",
+  "statement": "Statement of H5.",
+  "created": "2026-05-01",
+  "created_by": "human",
+  "status": "active",
+  "scope_claim": "current quarter",
+  "falsification": "f",
+  "review_trigger": "r",
+  "form": {
+   "atom": "p5"
+  }
+ },
+ "H6": {
+  "id": "H6",
+  "type": "hypothesis",
+  "label": "h6",
+  "statement": "Statement of H6.",
+  "created": "2026-05-01",
+  "created_by": "human",
+  "status": "active",
+  "scope_claim": "current quarter",
+  "falsification": "f",
+  "review_trigger": "r",
+  "form": {
+   "atom": "p6"
+  }
+ },
+ "H7": {
+  "id": "H7",
+  "type": "hypothesis",
+  "label": "h7",
+  "statement": "Statement of H7.",
+  "created": "2026-05-01",
+  "created_by": "human",
+  "status": "active",
+  "scope_claim": "current quarter",
+  "falsification": "f",
+  "review_trigger": "r",
+  "form": {
+   "atom": "p7"
+  }
+ },
+ "H8": {
+  "id": "H8",
+  "type": "hypothesis",
+  "label": "h8",
+  "statement": "Statement of H8.",
+  "created": "2026-05-01",
+  "created_by": "human",
+  "status": "active",
+  "scope_claim": "current quarter",
+  "falsification": "f",
+  "review_trigger": "r",
+  "form": {
+   "atom": "p8"
+  }
+ },
+ "H9": {
+  "id": "H9",
+  "type": "hypothesis",
+  "label": "h9",
+  "statement": "Statement of H9.",
+  "created": "2026-05-01",
+  "created_by": "human",
+  "status": "active",
+  "scope_claim": "current quarter",
+  "falsification": "f",
+  "review_trigger": "r",
+  "form": {
+   "atom": "p9"
+  }
+ },
+ "H10": {
+  "id": "H10",
+  "type": "hypothesis",
+  "label": "h10",
+  "statement": "Statement of H10.",
+  "created": "2026-05-01",
+  "created_by": "human",
+  "status": "active",
+  "scope_claim": "current quarter",
+  "falsification": "f",
+  "review_trigger": "r",
+  "form": {
+   "atom": "p10"
+  }
+ },
+ "H11": {
+  "id": "H11",
+  "type": "hypothesis",
+  "label": "h11",
+  "statement": "Statement of H11.",
+  "created": "2026-05-01",
+  "created_by": "human",
+  "status": "active",
+  "scope_claim": "current quarter",
+  "falsification": "f",
+  "review_trigger": "r",
+  "form": {
+   "atom": "p11"
+  }
+ },
+ "H12": {
+  "id": "H12",
+  "type": "hypothesis",
+  "label": "h12",
+  "statement": "Statement of H12.",
+  "created": "2026-05-01",
+  "created_by": "human",
+  "status": "active",
+  "scope_claim": "current quarter",
+  "falsification": "f",
+  "review_trigger": "r",
+  "form": {
+   "atom": "p12"
+  }
+ },
+ "H13": {
+  "id": "H13",
+  "type": "hypothesis",
+  "label": "h13",
+  "statement": "Statement of H13.",
+  "created": "2026-05-01",
+  "created_by": "human",
+  "status": "active",
+  "scope_claim": "current quarter",
+  "falsification": "f",
+  "review_trigger": "r",
+  "form": {
+   "atom": "p13"
+  }
+ },
+ "H14": {
+  "id": "H14",
+  "type": "hypothesis",
+  "label": "h14",
+  "statement": "Statement of H14.",
+  "created": "2026-05-01",
+  "created_by": "human",
+  "status": "active",
+  "scope_claim": "current quarter",
+  "falsification": "f",
+  "review_trigger": "r",
+  "form": {
+   "atom": "p14"
+  }
+ },
+ "H15": {
+  "id": "H15",
+  "type": "hypothesis",
+  "label": "h15",
+  "statement": "Statement of H15.",
+  "created": "2026-05-01",
+  "created_by": "human",
+  "status": "active",
+  "scope_claim": "current quarter",
+  "falsification": "f",
+  "review_trigger": "r",
+  "form": {
+   "atom": "p15"
+  }
+ },
+ "H16": {
+  "id": "H16",
+  "type": "hypothesis",
+  "label": "h16",
+  "statement": "Statement of H16.",
+  "created": "2026-05-01",
+  "created_by": "human",
+  "status": "active",
+  "scope_claim": "current quarter",
+  "falsification": "f",
+  "review_trigger": "r",
+  "form": {
+   "atom": "p16"
+  }
+ },
+ "H17": {
+  "id": "H17",
+  "type": "hypothesis",
+  "label": "h17",
+  "statement": "Statement of H17.",
+  "created": "2026-05-01",
+  "created_by": "human",
+  "status": "active",
+  "scope_claim": "current quarter",
+  "falsification": "f",
+  "review_trigger": "r",
+  "form": {
+   "atom": "p17"
+  }
+ },
+ "H18": {
+  "id": "H18",
+  "type": "hypothesis",
+  "label": "h18",
+  "statement": "Statement of H18.",
+  "created": "2026-05-01",
+  "created_by": "human",
+  "status": "active",
+  "scope_claim": "current quarter",
+  "falsification": "f",
+  "review_trigger": "r",
+  "form": {
+   "atom": "p18"
+  }
+ },
+ "H19": {
+  "id": "H19",
+  "type": "hypothesis",
+  "label": "h19",
+  "statement": "Statement of H19.",
+  "created": "2026-05-01",
+  "created_by": "human",
+  "status": "active",
+  "scope_claim": "current quarter",
+  "falsification": "f",
+  "review_trigger": "r",
+  "form": {
+   "atom": "p19"
+  }
+ }
+}

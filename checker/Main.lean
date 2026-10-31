@@ -100,7 +100,7 @@ def parseStepArg (s : String) : Except String (String × Form × String × List 
   let j ← parseJsonStrict s
   let id ← (j.getObjVal? "id" >>= Lean.Json.getStr?).mapError (fun e => s!"step.id: {e}")
   let cj ← (j.getObjVal? "conclusion").mapError (fun e => s!"step.conclusion: {e}")
-  let concl ← formOfJson cj |>.mapError (fun e => s!"step.conclusion: {e}")
+  let concl ← (Prod.fst <$> formOfJson formBudget cj) |>.mapError (fun e => s!"step.conclusion: {e}")
   let rule ← (j.getObjVal? "rule" >>= Lean.Json.getStr?).mapError (fun e => s!"step.rule: {e}")
   let cites ← match (j.getObjVal? "cites").toOption with
     | none => .error "step.cites: required"
@@ -152,6 +152,24 @@ def main (args : List String) : IO UInt32 := do
               if !undeclared.isEmpty then
                 IO.eprintln s!"--step cites {undeclared} not listed in --premises; the declared premise set must cover every citation"
                 return 2
+              -- D12: a step resting on drifted content is never green. A stale premise
+              -- (or one downstream of stale content) makes the step needs-recheck: the
+              -- conditional rule check would still be valid given the premises, but the
+              -- current accepted dependency state no longer supports it.
+              let (_, staleIds) ← driftFindings dir reg
+              let upStale := upstreamStale (registryEdges reg) staleIds
+              let staleP := pids.filter (fun p => p ∈ staleIds)
+              let upStaleP := pids.filter (fun p => p ∈ upStale)
+              if !staleP.isEmpty then
+                IO.println (jObj [("verdict", jStr "stale"),
+                  ("reason", jStr s!"premises {staleP} changed after the provenance baseline - needs recheck (not a claim of invalidity)"),
+                  ("assumptions", jStrArr cites)])
+                return 1
+              if !upStaleP.isEmpty then
+                IO.println (jObj [("verdict", jStr "upstream-stale"),
+                  ("reason", jStr s!"premises {upStaleP} depend on content that changed after the provenance baseline; the conditional check would be valid given the premises, but the current accepted dependency state no longer supports it - needs recheck"),
+                  ("assumptions", jStrArr cites)])
+                return 1
               match ruleSpecOfName rname with
               | .outside out =>
                 IO.println (jObj [("verdict", jStr "unchecked"),
@@ -242,6 +260,12 @@ def main (args : List String) : IO UInt32 := do
           let nBad := (verdicts.filter (fun v => v.verdict == "rejected" || v.verdict == "blocked")).length
           return if nErr + nBad > 0 then 1 else 0
         else
-          IO.println (provenanceJson reg today? dir)
+          -- fail closed: an empty/missing registry must never emit an "empty" artifact
+          -- that a redirect could mistake for a real provenance baseline
+          if reg.entries.isEmpty && reg.tombstones.isEmpty then
+            IO.eprintln s!"no registry entries loaded from {dir} (missing or empty registry); refusing to emit a provenance artifact"
+            return 2
+          let (_, staleIds) ← driftFindings dir reg
+          IO.println (provenanceJson reg staleIds today? dir)
           return if loadFs.any (fun f => f.level == "error") then 1 else 0
   | [] => IO.eprintln usage; return 2

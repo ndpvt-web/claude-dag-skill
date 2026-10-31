@@ -47,6 +47,10 @@ for name in sorted(os.listdir(FX)):
         for tid, want in exp.get("verdicts", {}).items():
             if vd.get(tid) != want:
                 errs.append(f"verdict {tid}={vd.get(tid)} != {want}")
+        fr = {e["id"]: e.get("freshness") for e in rep.get("entries", [])}
+        for tid, want in exp.get("freshness", {}).items():
+            if fr.get(tid) != want:
+                errs.append(f"freshness {tid}={fr.get(tid)} != {want}")
     cstep = exp.get("check_step")
     if cstep:
         cr = run([BIN, "check-step", d, "--today", today,

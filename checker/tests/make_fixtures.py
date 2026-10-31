@@ -383,4 +383,72 @@ make("staleness-too-large",
      lambda f: f["hypotheses.json"]["H1"].__setitem__("staleness_period_days", 99999),
      {"exit": 1, "findings": [("error","parse")]})
 
+# 34. D12: A1 drifts after baseline -> A1 stale, downstream T1 upstream-stale (never old green)
+# upstream-stale needs a REAL baseline: write the unmutated registry, capture
+# provenance with the built binary, then drift A1's statement.
+d = os.path.join(ROOT, "upstream-stale")
+if os.path.exists(d): shutil.rmtree(d)
+os.makedirs(d)
+for fname, content in BASE.items():
+    with open(os.path.join(d, fname), "w") as f:
+        f.write(json.dumps(content, indent=1))
+import subprocess as _sp
+BIN = os.environ.get("DAGCHECK_BIN",
+    os.path.abspath(os.path.join(ROOT, "..", "..", ".lake", "build", "bin", "dagcheck")))
+prov = _sp.run([BIN, "graph", d, "--today", "2026-10-31"], capture_output=True, text=True)
+assert prov.returncode == 0 and prov.stdout.startswith("{"), prov.stderr[:300]
+with open(os.path.join(d, "provenance.json"), "w") as f:
+    f.write(prov.stdout)
+_ax = copy.deepcopy(BASE["axioms.json"])
+_ax["A1"]["statement"] = "Statement of A1, CHANGED after baseline."
+with open(os.path.join(d, "axioms.json"), "w") as f:
+    f.write(json.dumps(_ax, indent=1))
+json.dump({"exit": 0, "findings": [("warning","stale-fingerprint")],
+    "verdicts": {"T1": "upstream-stale"},
+    "freshness": {"A1": "stale", "T1": "upstream-stale", "H1": "current"},
+    "check_step": {"premises": ["A1","H1"],
+                   "step": {"id":"S1","conclusion":{"atom":"Q"},"rule":"modus ponens","cites":["A1","H1"]},
+                   "exit": 1, "verdict": "stale"}},
+  open(os.path.join(d, "EXPECTED.json"), "w"), indent=1)
+
+# 35. resource bound: JSON nesting beyond 500 -> loud parse error (was SIGKILL class)
+def _deep_nest(f):
+    f["hypotheses.json"] = "[" * 600 + "1" + "]" * 600
+make("nesting-attack", _deep_nest,
+     {"exit": 1, "findings": [("error","parse")]})
+
+# 36. resource bound: form beyond 1000 constructors -> loud error (balanced tree, depth ok)
+def _big_form(f):
+    def tree(d):
+        return {"atom":"P"} if d == 0 else {"imp":[tree(d-1), tree(d-1)]}
+    f["hypotheses.json"]["H1"]["form"] = tree(10)   # 2^11-1 = 2047 constructors
+make("form-too-large", _big_form,
+     {"exit": 1, "findings": [("error","parse")]})
+
+# 37. resource bound: total formula size over work budget -> refused, never OOM
+def _work(f):
+    def tree(d):
+        return {"atom":"P"} if d == 0 else {"imp":[tree(d-1), tree(d-1)]}
+    f["hypotheses.json"]["H1"]["form"] = tree(8)    # 511 constructors; two forms -> 1022 > 1000 work budget
+    f["hypotheses.json"]["H2"] = dict(f["hypotheses.json"]["H1"], id="H2", label="h2")
+    f["theorems.json"] = {}   # keep the fixture about the work bound, not T1's derivation
+make("consistency-work-budget", _work,
+     {"exit": 0, "findings": [("warning","consistency-over-cap")]})
+
+# 38. max accepted cap: 20 atoms at --cap 20 must succeed (measured ~0.2s, ~210MB)
+def _cap20(f):
+    f["hypotheses.json"] = {}
+    f["logic.json"] = {}
+    f["axioms.json"] = {}
+    f["definitions.json"] = {}
+    f["theorems.json"] = {}
+    f["deprecated.json"] = {}
+    for i in range(20):
+        a = f"p{i}"
+        f["hypotheses.json"][f"H{i}"] = entry(f"H{i}","hypothesis",
+            falsification="f", review_trigger="r", form={"atom": a})
+        f["logic.json"][a] = a
+make("cap20-max", _cap20, {"exit": 0, "cap": 20,
+     "findings": [("info","consistency")]})
+
 print("fixtures generated in", ROOT)

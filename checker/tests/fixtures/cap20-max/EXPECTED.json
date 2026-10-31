@@ -1,0 +1,10 @@
+{
+ "exit": 0,
+ "cap": 20,
+ "findings": [
+  [
+   "info",
+   "consistency"
+  ]
+ ]
+}

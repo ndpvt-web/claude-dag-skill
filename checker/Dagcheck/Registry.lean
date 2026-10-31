@@ -56,30 +56,49 @@ def finfo (code detail : String) : Finding := ⟨"info", code, detail⟩
 -- ---------- JSON form encoding (explicit translation artifact per entry) ----------
 -- {"atom":"P"} | {"neg":F} | {"imp":[F,G]} | {"conj":[F,G]} | {"disj":[F,G]}
 
-partial def formOfJson (j : Json) : Except String Form := do
-  let keys := (["atom", "neg", "imp", "conj", "disj"] : List String).filter
-    (fun k => (j.getObjVal? k).toOption.isSome)
-  match keys with
-  | ["atom"] =>
-    let n ← (j.getObjVal? "atom" >>= Json.getStr?).mapError (fun e => s!"form.atom: {e}")
-    .ok (.atom n)
-  | ["neg"] => .neg <$> formOfJson (← j.getObjVal? "neg")
-  | ["imp"] =>
-    let arr ← (← j.getObjVal? "imp").getArr?
-    match arr[0]?, arr[1]?, arr[2]? with
-    | some a, some b, none => .imp <$> formOfJson a <*> formOfJson b
-    | _, _, _ => .error "form.imp expects exactly [a, b]"
-  | ["conj"] =>
-    let arr ← (← j.getObjVal? "conj").getArr?
-    match arr[0]?, arr[1]?, arr[2]? with
-    | some a, some b, none => .conj <$> formOfJson a <*> formOfJson b
-    | _, _, _ => .error "form.conj expects exactly [a, b]"
-  | ["disj"] =>
-    let arr ← (← j.getObjVal? "disj").getArr?
-    match arr[0]?, arr[1]?, arr[2]? with
-    | some a, some b, none => .disj <$> formOfJson a <*> formOfJson b
-    | _, _, _ => .error "form.disj expects exactly [a, b]"
-  | _ => .error "form: object with exactly one of atom/neg/imp/conj/disj required"
+/-- Maximum constructors in one encoded form. Real registry formulas are tiny
+    (<20 nodes). Larger encodings are a resource attack: atomsOfForm's `++` spine is
+    quadratic in depth, and consistency eval cost is size x 2^atoms (D6 class). -/
+def formBudget : Nat := 1000
+
+partial def formOfJson (budget : Nat) (j : Json) : Except String (Form × Nat) := do
+  match budget with
+  | 0 => .error s!"form too large: exceeds {formBudget} constructors (resource bound)"
+  | budget + 1 =>
+    let keys := (["atom", "neg", "imp", "conj", "disj"] : List String).filter
+      (fun k => (j.getObjVal? k).toOption.isSome)
+    match keys with
+    | ["atom"] =>
+      let n ← (j.getObjVal? "atom" >>= Json.getStr?).mapError (fun e => s!"form.atom: {e}")
+      .ok (.atom n, budget)
+    | ["neg"] =>
+      let (a, b1) ← formOfJson budget (← j.getObjVal? "neg")
+      .ok (.neg a, b1)
+    | ["imp"] =>
+      let arr ← (← j.getObjVal? "imp").getArr?
+      match arr[0]?, arr[1]?, arr[2]? with
+      | some x, some y, none =>
+        let (a, b1) ← formOfJson budget x
+        let (c, b2) ← formOfJson b1 y
+        .ok (.imp a c, b2)
+      | _, _, _ => .error "form.imp expects exactly [a, b]"
+    | ["conj"] =>
+      let arr ← (← j.getObjVal? "conj").getArr?
+      match arr[0]?, arr[1]?, arr[2]? with
+      | some x, some y, none =>
+        let (a, b1) ← formOfJson budget x
+        let (c, b2) ← formOfJson b1 y
+        .ok (.conj a c, b2)
+      | _, _, _ => .error "form.conj expects exactly [a, b]"
+    | ["disj"] =>
+      let arr ← (← j.getObjVal? "disj").getArr?
+      match arr[0]?, arr[1]?, arr[2]? with
+      | some x, some y, none =>
+        let (a, b1) ← formOfJson budget x
+        let (c, b2) ← formOfJson b1 y
+        .ok (.disj a c, b2)
+      | _, _, _ => .error "form.disj expects exactly [a, b]"
+    | _ => .error "form: object with exactly one of atom/neg/imp/conj/disj required"
 
 def atomsOfJsonForm (f : Form) : List String := atomsOfForm f
 
@@ -194,7 +213,7 @@ partial def parseEntry (ctx : String) (t : EntryType) (key : String) (j : Json) 
   let proofConfidence := (j.getObjVal? "proof_confidence").toOption.bind (·.getStr?.toOption)
   let form ← match (j.getObjVal? "form").toOption with
     | none => .ok none
-    | some fj => some <$> formOfJson fj |>.mapError (fun e => s!"{ectx}: {e}")
+    | some fj => some <$> (Prod.fst <$> formOfJson formBudget fj) |>.mapError (fun e => s!"{ectx}: {e}")
   -- type-specific mandatory fields
   match t with
   | .axiom =>
@@ -311,6 +330,9 @@ structure Registry where
 
 def Registry.all (r : Registry) : List Entry := r.entries ++ r.tombstones
 
+/-- Maximum non-tombstone entries a registry may carry (fail-closed resource bound). -/
+def maxRegistryEntries : Nat := 50000
+
 /-- Parse all files; per-file parse failures become error findings (other files still load). -/
 partial def loadRegistry (files : RawFiles) : Registry × List Finding :=
   let go (fname : String) (t : EntryType) (content : String) : List Entry × List Finding :=
@@ -333,7 +355,15 @@ partial def loadRegistry (files : RawFiles) : Registry × List Finding :=
       match parseAtomTable "logic.json" c with
       | .ok ps => (ps, [])
       | .error e => ([], [ferr "parse" e])
-  (⟨as ++ ds ++ hs ++ ts, tombs, table⟩, f1 ++ f2 ++ f3 ++ f4 ++ f5 ++ f6)
+  let total := as.length + ds.length + hs.length + ts.length
+  -- Fail closed on oversized registries: per-entry cross-checks are superlinear, so a
+  -- huge registry is a resource attack (D6 class), not data. 20k entries already take
+  -- seconds; 50k is far beyond a hand-curated reasoning registry.
+  let sizeF :=
+    if total > maxRegistryEntries then
+      [ferr "resource" s!"registry has {total} entries, exceeding the {maxRegistryEntries}-entry bound; split the registry"]
+    else []
+  (⟨as ++ ds ++ hs ++ ts, tombs, table⟩, f1 ++ f2 ++ f3 ++ f4 ++ f5 ++ f6 ++ sizeF)
 
 -- ---------- global validation ----------
 

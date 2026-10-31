@@ -28,7 +28,24 @@ def satAll (v : Assign) (ps : List (String × Form)) : Bool :=
     no caller-supplied size to get wrong (the R7 hole was a caller-supplied n smaller than
     the highest atom index, making `getD ... false` silently fabricate values). Over the
     cap: explicit refusal, never a silent wrong answer. -/
+def formSize : Form → Nat
+  | .atom _ => 1
+  | .neg a => formSize a + 1
+  | .imp a b => formSize a + formSize b + 1
+  | .conj a b => formSize a + formSize b + 1
+  | .disj a b => formSize a + formSize b + 1
+
+/-- Total formula-size budget across encoded premises. atomsOfForm's `++` spine is
+    quadratic per form and enumeration eval is size x 2^atoms, so the SUM of sizes is
+    the honest work measure. Over budget: explicit refusal, never a silent wrong answer
+    and never an OOM (D6 class; an oversized form alone can SIGKILL the process). -/
+def consistencyWorkBudget : Nat := 1000
+
 def consistent (ps : List (String × Form)) (cap : Nat) : Except String Bool :=
+  let work := (ps.map (fun p => formSize p.2)).sum
+  if work > consistencyWorkBudget then
+    .error s!"consistency check refused: total formula size {work} exceeds work budget {consistencyWorkBudget} (eval cost is size x 2^atoms); simplify encodings or split the registry"
+  else
   let atoms := atomsOf ps
   if atoms.length > cap then
     .error s!"consistency check refused: {atoms.length} atoms exceed cap {cap} (2^n enumeration); re-run with --cap N up to the ceiling 20 (dagcheck check --cap N)"
@@ -175,10 +192,13 @@ theorem consistent_sound {ps : List (String × Form)} {cap : Nat}
   simp only [consistent] at h
   split at h
   · simp at h
-  · rename_i hcap
-    injection h with h
-    obtain ⟨v, hv, hsv⟩ := exists_of_any h
-    exact ⟨v, fun p hp => beq_iff_eq.mp (all_of_all hsv p hp)⟩
+  · rename_i hwork
+    split at h
+    · simp at h
+    · rename_i hcap
+      injection h with h
+      obtain ⟨v, hv, hsv⟩ := exists_of_any h
+      exact ⟨v, fun p hp => beq_iff_eq.mp (all_of_all hsv p hp)⟩
 
 /-- Complete (within the fragment): a `false` verdict means NO valuation that assigns the
     premises' atoms can satisfy them all. False "inconsistent" verdicts are impossible. -/
@@ -190,22 +210,25 @@ theorem consistent_complete {ps : List (String × Form)} {cap : Nat}
   simp only [consistent] at h
   split at h
   · simp at h
-  · rename_i hcap
-    injection h with h
-    have hany : (allValsOver (atomsOf ps)).any (fun w => satAll w ps) = false := h
-    have hmem : ((atomsOf ps).map (fun a => (a, (lookupA v a).getD false))) ∈ allValsOver (atomsOf ps) :=
-      mem_allValsOver hv
-    have hfalse := all_false_of_any_eq_false hany _ hmem
-    obtain ⟨p, hp, hpfalse⟩ := exists_of_all_eq_false hfalse
-    refine ⟨p, hp, ?_⟩
-    have hagree : evalOpt ((atomsOf ps).map (fun a => (a, (lookupA v a).getD false))) p.2 = evalOpt v p.2 := by
-      apply evalOpt_agree
-      intro a ha
-      have hmem' := mem_atomsOf hp ha
-      exact lookupA_map_restrict hmem' (hv a hmem')
-    rw [← hagree]
-    intro hc
-    rw [hc] at hpfalse
-    simp at hpfalse
+  · rename_i hwork
+    split at h
+    · simp at h
+    · rename_i hcap
+      injection h with h
+      have hany : (allValsOver (atomsOf ps)).any (fun w => satAll w ps) = false := h
+      have hmem : ((atomsOf ps).map (fun a => (a, (lookupA v a).getD false))) ∈ allValsOver (atomsOf ps) :=
+        mem_allValsOver hv
+      have hfalse := all_false_of_any_eq_false hany _ hmem
+      obtain ⟨p, hp, hpfalse⟩ := exists_of_all_eq_false hfalse
+      refine ⟨p, hp, ?_⟩
+      have hagree : evalOpt ((atomsOf ps).map (fun a => (a, (lookupA v a).getD false))) p.2 = evalOpt v p.2 := by
+        apply evalOpt_agree
+        intro a ha
+        have hmem' := mem_atomsOf hp ha
+        exact lookupA_map_restrict hmem' (hv a hmem')
+      rw [← hagree]
+      intro hc
+      rw [hc] at hpfalse
+      simp at hpfalse
 
 end Dagcheck

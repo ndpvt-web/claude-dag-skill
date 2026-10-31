@@ -1,0 +1,36 @@
+{
+ "exit": 0,
+ "findings": [
+  [
+   "warning",
+   "stale-fingerprint"
+  ]
+ ],
+ "verdicts": {
+  "T1": "upstream-stale"
+ },
+ "freshness": {
+  "A1": "stale",
+  "T1": "upstream-stale",
+  "H1": "current"
+ },
+ "check_step": {
+  "premises": [
+   "A1",
+   "H1"
+  ],
+  "step": {
+   "id": "S1",
+   "conclusion": {
+    "atom": "Q"
+   },
+   "rule": "modus ponens",
+   "cites": [
+    "A1",
+    "H1"
+   ]
+  },
+  "exit": 1,
+  "verdict": "stale"
+ }
+}

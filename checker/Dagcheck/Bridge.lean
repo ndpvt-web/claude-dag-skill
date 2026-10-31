@@ -47,25 +47,34 @@ def verdictJson (v : Verdict) : String := jObj
   [("id", jStr v.id), ("verdict", jStr v.verdict), ("reason", jStr v.reason),
    ("rule", jOptStr v.rule), ("assumptions", jStrArr v.assumptions)]
 
-/-- freshness: drift against the committed provenance baseline. "stale" means the content
-    changed after the baseline - any prior verdict needs recheck, never read as old green. -/
-def freshnessOf (staleIds : List String) (baseline : Bool) (id : String) : String :=
-  if id ∈ staleIds then "stale" else if baseline then "current" else "untracked"
+/-- Entries whose upstream chain contains a drifted entry: their conditional derivations
+    are unchanged (still valid given their premises), but the CURRENT accepted dependency
+    state no longer supports them. They must never read as green. -/
+def upstreamStale (edges : List GEdge) (staleIds : List String) : List String :=
+  ((staleIds.flatMap (fun s => blastRadiusOf edges depKinds s)).eraseDups).filter (· ∉ staleIds)
+
+def freshnessOf (staleIds upStale : List String) (baseline : Bool) (id : String) : String :=
+  if id ∈ staleIds then "stale"
+  else if id ∈ upStale then "upstream-stale"
+  else if baseline then "current" else "untracked"
 
 /-- What a consumer may act on: a drifted entry's prior verdict NEVER reads as green.
     The original verdict is preserved inside the reason. -/
-def displayVerdict (staleIds : List String) (v : Verdict) : Verdict :=
+def displayVerdict (staleIds upStale : List String) (v : Verdict) : Verdict :=
   if v.id ∈ staleIds then
     { v with verdict := "stale",
              reason := s!"content changed after the provenance baseline; prior verdict '{v.verdict}' no longer covers the new content - needs recheck (not a claim of invalidity)" }
+  else if v.id ∈ upStale then
+    { v with verdict := "upstream-stale",
+             reason := s!"an upstream dependency changed after the provenance baseline; the conditional derivation is unchanged and remains valid given its premises, but the current accepted dependency state no longer supports it - needs recheck (prior verdict '{v.verdict}' preserved as context, not a current green; not a claim of invalidity)" }
   else v
 
-def entryJson (staleIds : List String) (baseline : Bool) (e : Entry) (verdict? : Option Verdict) : String := jObj
+def entryJson (staleIds upStale : List String) (baseline : Bool) (e : Entry) (verdict? : Option Verdict) : String := jObj
   [("id", jStr e.id), ("type", jStr e.type.typeName),
    ("status", jStr (Registry.effectiveStatus e).statusName),
    ("label", jStr e.label),
    ("fingerprint", jStr (entryFingerprint e)),
-   ("freshness", jStr (freshnessOf staleIds baseline e.id)),
+   ("freshness", jStr (freshnessOf staleIds upStale baseline e.id)),
    ("stale_now", if e.staleNow then "true" else "false"),
    ("verdict", match verdict? with | some v => jStr v.verdict | none => jNull)]
 
@@ -89,6 +98,7 @@ def reportJson (r : Registry) (parseFs staleFs : List Finding) (staleIds : List 
   let nWarn := (allFs.filter (fun f => f.level == "warning")).length
   let nBad := (verdicts.filter (fun v => v.verdict == "rejected" || v.verdict == "blocked")).length
   let edges := registryEdges r
+  let upStale := upstreamStale edges staleIds
   jObj
     [("report", jStr "dagcheck/v1"), ("registry_dir", jStr dir),
      ("today", match today? with | some d => dateJson d | none => jNull),
@@ -98,17 +108,18 @@ def reportJson (r : Registry) (parseFs staleFs : List Finding) (staleIds : List 
         ("rejected_or_blocked_verdicts", jNum nBad)]),
      ("consistency", jStr consResult),
      ("findings", jArr (allFs.map findingJson)),
-     ("verdicts", jArr ((verdicts.map (displayVerdict staleIds)).map verdictJson)),
+     ("verdicts", jArr ((verdicts.map (displayVerdict staleIds upStale)).map verdictJson)),
      ("entries", jArr (r.all.map fun e =>
-        entryJson staleIds baseline e
-          ((verdicts.find? (fun v => v.id == e.id)).map (displayVerdict staleIds)))),
+        entryJson staleIds upStale baseline e
+          ((verdicts.find? (fun v => v.id == e.id)).map (displayVerdict staleIds upStale)))),
      ("graph", jObj [("nodes", jNum r.all.length), ("edges", jNum edges.length),
         ("dependency_cycle_nodes", jStrArr (depCycleNodes edges)),
         ("supersedes_cycle_nodes", jStrArr (supersedesCycleNodes edges))])]
 
 /-- provenance.json: the canonical serialization of the derivation graph (graph model). -/
-def provenanceJson (r : Registry) (today? : Option Date) (dir : String) : String :=
+def provenanceJson (r : Registry) (staleIds : List String) (today? : Option Date) (dir : String) : String :=
   let edges := registryEdges r
+  let upStale := upstreamStale edges staleIds
   let ids := r.all.map Entry.id
   let edgeJson (g : GEdge) : String :=
     jObj [("kind", jStr (kindName g.kind)), ("from", jStr g.src), ("to", jStr g.dst)]
@@ -118,8 +129,10 @@ def provenanceJson (r : Registry) (today? : Option Date) (dir : String) : String
      ("status", jStr (Registry.effectiveStatus e).statusName),
      ("label", jStr e.label), ("fingerprint", jStr (entryFingerprint e)),
      ("stale_now", if e.staleNow then "true" else "false"),
+     ("upstream_stale", if e.id ∈ upStale then "true" else "false"),
+     ("freshness", jStr (freshnessOf staleIds upStale true e.id)),
      ("verdict", match verdicts.find? (fun v => v.id == e.id) with
-       | some v => jStr v.verdict
+       | some v => jStr (displayVerdict staleIds upStale v).verdict
        | none => jNull)]
   jObj
     [("spec", jStr "dagcheck-provenance/v1"), ("generated_from", jStr dir),

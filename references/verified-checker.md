@@ -62,6 +62,12 @@ Verdict classes:
   provenance baseline. A drifted entry's prior verdict is NEVER reported as green:
   the report shows `stale` with the prior verdict preserved inside the reason. Never
   a claim of invalidity.
+- **upstream-stale / needs recheck** - an upstream dependency of this entry drifted.
+  The entry's conditional derivation is unchanged and remains valid given its
+  premises, but the current accepted dependency state no longer supports it. Reports,
+  verdicts, check-step and the graph viewer all surface this state; the prior verdict
+  is preserved inside the reason as context, never as a current green. Never a claim
+  of invalidity.
 
 ## The coverage contract (atom table)
 
@@ -126,9 +132,15 @@ term/scope/distinguishes_from/rationale; A entries domain/hardness/rationale; H
 entries scope_claim/falsification/review_trigger; T entries
 derived_from/inference_rule/derivation_note/proof_confidence/session_derived).
 Unknown fields are loud errors. `form` is the checker's own documented extension.
-Defensive bounds: JSON number exponents beyond |99| and mantissas beyond 40 digits
-are parse errors (no exponentiation blowups); staleness_period_days is bounded to
-[0, 36500]; the consistency ceiling is 20 distinct atoms.
+Defensive bounds (each with an adversarial regression fixture): JSON number exponents
+beyond |99| and mantissas beyond 40 digits are parse errors; JSON nesting beyond 500
+levels is a parse error; one encoded form beyond 1000 constructors is a parse error;
+total formula size beyond 1000 constructors refuses the consistency check (all three
+were OOM/SIGKILL vectors: the pre-bound imp-tower probe died at 12s); registries beyond
+50000 entries are refused; staleness_period_days is bounded to [0, 36500]; the
+consistency ceiling is 20 distinct atoms, measured at ~0.2s / ~210MB worst case
+(fixture cap20-max). `dagcheck graph` on a missing or empty registry exits 2 and
+emits NO artifact, so a redirect can never clobber a real baseline with an empty file.
 
 ## What the checker does not claim
 

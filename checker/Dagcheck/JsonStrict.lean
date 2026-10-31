@@ -127,13 +127,20 @@ where
         else ⟨mant, (-k).toNat⟩
       .ok (Json.num num, rest')
 
+/-- Maximum accepted JSON nesting depth. Registry JSON legitimately nests about 10
+    levels; 500 is generous headroom. Deeper input is a resource attack (the D6 class),
+    not data, and is rejected before any semantic work happens. -/
+def maxJsonDepth : Nat := 500
+
 mutual
-private partial def pValue : Nat → List Char → Except String (Json × List Char)
-  | 0, _ => .error "parser fuel exhausted (internal limit; report as bug)"
-  | fuel + 1, chars =>
-    match ws chars with
-    | '{' :: rest => pObject fuel rest
-    | '[' :: rest => pArray fuel rest
+private partial def pValue : Nat → Nat → List Char → Except String (Json × List Char)
+  | 0, _, _ => .error "parser fuel exhausted (internal limit; report as bug)"
+  | fuel + 1, depth, chars =>
+    if depth > maxJsonDepth then
+      .error s!"JSON nesting deeper than {maxJsonDepth} levels (resource bound)"
+    else match ws chars with
+    | '{' :: rest => pObject fuel (depth + 1) rest
+    | '[' :: rest => pArray fuel (depth + 1) rest
     | '"' :: rest =>
       match pStringChars rest with
       | .ok (s, r) => .ok (Json.str s, r)
@@ -144,16 +151,16 @@ private partial def pValue : Nat → List Char → Except String (Json × List C
     | c :: _ => if c.isDigit || c == '-' then pNumber (ws chars) else .error s!"unexpected character '{c}'"
     | [] => .error "unexpected end of input"
 
-private partial def pObject : Nat → List Char → Except String (Json × List Char)
-  | 0, _ => .error "parser fuel exhausted (internal limit; report as bug)"
-  | fuel + 1, chars =>
+private partial def pObject : Nat → Nat → List Char → Except String (Json × List Char)
+  | 0, _, _ => .error "parser fuel exhausted (internal limit; report as bug)"
+  | fuel + 1, depth, chars =>
     match ws chars with
     | '}' :: rest => .ok (Json.mkObj [], rest)
-    | chars' => pPairs fuel chars' []
+    | chars' => pPairs fuel depth chars' []
 where
-  pPairs : Nat → List Char → List (String × Json) → Except String (Json × List Char)
-    | 0, _, _ => .error "parser fuel exhausted (internal limit; report as bug)"
-    | fuel + 1, chars, acc =>
+  pPairs : Nat → Nat → List Char → List (String × Json) → Except String (Json × List Char)
+    | 0, _, _, _ => .error "parser fuel exhausted (internal limit; report as bug)"
+    | fuel + 1, depth, chars, acc =>
       match ws chars with
       | '"' :: rest =>
         match pStringChars rest with
@@ -161,34 +168,34 @@ where
         | .ok (k, rest1) =>
           match ws rest1 with
           | ':' :: rest2 =>
-            match pValue fuel (ws rest2) with
+            match pValue fuel depth (ws rest2) with
             | .error e => .error e
             | .ok (v, rest3) =>
               if acc.any (fun p => p.1 == k) then
                 .error s!"duplicate key \"{k}\" in object"
               else
                 match ws rest3 with
-                | ',' :: rest4 => pPairs fuel rest4 (acc ++ [(k, v)])
+                | ',' :: rest4 => pPairs fuel depth rest4 (acc ++ [(k, v)])
                 | '}' :: rest4 => .ok (Json.mkObj (acc ++ [(k, v)]), rest4)
                 | _ => .error "expected ',' or '}' in object"
           | _ => .error "expected ':' after object key"
       | _ => .error "expected string key in object"
 
-private partial def pArray : Nat → List Char → Except String (Json × List Char)
-  | 0, _ => .error "parser fuel exhausted (internal limit; report as bug)"
-  | fuel + 1, chars =>
+private partial def pArray : Nat → Nat → List Char → Except String (Json × List Char)
+  | 0, _, _ => .error "parser fuel exhausted (internal limit; report as bug)"
+  | fuel + 1, depth, chars =>
     match ws chars with
     | ']' :: rest => .ok (Json.arr #[], rest)
-    | chars' => pElems fuel chars' #[]
+    | chars' => pElems fuel depth chars' #[]
 where
-  pElems : Nat → List Char → Array Json → Except String (Json × List Char)
-    | 0, _, _ => .error "parser fuel exhausted (internal limit; report as bug)"
-    | fuel + 1, chars, acc =>
-      match pValue fuel (ws chars) with
+  pElems : Nat → Nat → List Char → Array Json → Except String (Json × List Char)
+    | 0, _, _, _ => .error "parser fuel exhausted (internal limit; report as bug)"
+    | fuel + 1, depth, chars, acc =>
+      match pValue fuel depth (ws chars) with
       | .error e => .error e
       | .ok (v, rest1) =>
         match ws rest1 with
-        | ',' :: rest2 => pElems fuel rest2 (acc.push v)
+        | ',' :: rest2 => pElems fuel depth rest2 (acc.push v)
         | ']' :: rest2 => .ok (Json.arr (acc.push v), rest2)
         | _ => .error "expected ',' or ']' in array"
 end
@@ -196,7 +203,7 @@ end
 /-- Parse a complete JSON text strictly: duplicate keys rejected, trailing garbage rejected. -/
 def parseJsonStrict (s : String) : Except String Json :=
   let chars := s.toList
-  match pValue (chars.length + 1) chars with
+  match pValue (chars.length + 1) 1 chars with
   | .error e => .error e
   | .ok (j, rest) =>
     if (ws rest).isEmpty then .ok j
