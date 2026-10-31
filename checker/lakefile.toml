@@ -1,0 +1,9 @@
+name = "dagcheck"
+defaultTargets = ["dagcheck"]
+
+[[lean_lib]]
+name = "Dagcheck"
+
+[[lean_exe]]
+name = "dagcheck"
+root = "Main"
