@@ -54,25 +54,27 @@ This repo also ships `checker/`, a small independent program written in Lean 4 (
 
 - Every conclusion that uses a checkable rule is re-derived by the checker. If the cited facts do not produce the conclusion, the entry is **rejected**, not excused.
 - Reasoning the checker cannot machine-check (free-form prose rules, analogies) is marked **unchecked** - an honest non-verdict, never a silent pass.
-- It never edits your files. It reads, checks, and reports.
+- It never changes your facts. It reads, checks, and reports - the only file it writes is the derived `provenance.json`, and only when you run `graph --out`.
 
 One honest limit: the checker verifies the logic, not the English. If a fact's English statement is false, or loosely translated into logic, the proof can still check out. The checker answers "does this conclusion follow?" - a human still answers "is this fact true?"
 
 ```
 cd checker && lake build
 .lake/build/bin/dagcheck check path/to/.dag/registry --today 2026-10-31
-.lake/build/bin/dagcheck graph path/to/.dag/registry > path/to/.dag/registry/provenance.json
+.lake/build/bin/dagcheck graph path/to/.dag/registry --out path/to/.dag/registry/provenance.json
 ```
+
+Always use `--out` here. It writes the file atomically. Never use a shell `>` redirect onto the live `provenance.json` - the shell empties the file before the checker even starts.
 
 ## Seeing the dependency graph
 
-The checker also maps the dependency graph: for any fact, the **upstream chain** (everything it rests on) and the **blast radius** (everything that would need a recheck if it changed). A committed fingerprint baseline makes any edit show up as "needs recheck" for exactly its blast radius, so a changed fact never keeps an old green checkmark.
+The checker also maps the dependency graph: for any fact, the **upstream chain** (everything it rests on) and the **blast radius** (everything that would need a recheck if it changed). A committed fingerprint baseline makes any content edit show up as "needs recheck" for exactly its blast radius, so a changed fact never keeps an old green checkmark.
 
 Open `graph/index.html` in any browser and load that `provenance.json` to explore the graph: click a node to see its foundations and its blast radius. It runs fully offline; nothing is sent anywhere. Details: `references/verified-checker.md` and `references/graph-model.md`.
 
 ## Running the tests
 
-The checker ships with a test suite under `checker/tests/`: 48 fixture registries (each with an `EXPECTED.json` the checker output must match exactly) plus a label-edit check confirming that renaming a fact never marks it as changed. After `lake build`:
+The checker ships with a test suite under `checker/tests/`: 48 fixture registries (each with an `EXPECTED.json` of the results the checker must produce) plus a label-edit check confirming that renaming a fact's label never marks it as changed (IDs are permanent). After `lake build`:
 
 ```
 python3 checker/tests/run_fixtures.py
@@ -98,9 +100,9 @@ Most of the time, Claude needs to look at *all* the facts of one type at once - 
     hypotheses.json     # working assumptions
     theorems.json       # conclusions + their reasoning
     deprecated.json     # retired facts, kept for history
+    provenance.json     # full map of what was derived from what (checker baseline)
   meta/
     registry.json       # quick index + health status
-    provenance.json      # full map of what was derived from what
   sessions/
     YYYY-MM-DD-N.md      # notes from each working session
 ```

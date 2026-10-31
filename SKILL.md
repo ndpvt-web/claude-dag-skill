@@ -25,9 +25,9 @@ Target: 50-65% fewer tokens on prose. Technical accuracy: unchanged.
       hypotheses.json     # H-type: scope/existence claims (empirical, falsifiable) — one JSON object keyed by ID
       theorems.json       # T-type: derived conclusions with proof chains — one JSON object keyed by ID
       deprecated.json     # Tombstones: superseded entries, never deleted — one JSON object keyed by ID
+      provenance.json     # Full derivation graph (checker baseline, derived artifact)
     meta/
       registry.json       # Machine index + consistency state (no file paths — ID prefix maps to type file)
-      provenance.json     # Full derivation graph
     sessions/
       YYYY-MM-DD-N.md     # Per-session typed scratchpads (markdown — working documents, not structured data)
 ```
