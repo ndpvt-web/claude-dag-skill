@@ -3,8 +3,9 @@
 --     blast radius) and the dependency-cycle check use ONLY these.
 --   * `supersedes` is a HISTORY edge: rendered in the graph for audit navigation and
 --     checked for its own acyclicity, but never mixed into dependency closures.
--- Closure/cycle code is executable and adversarially tested (kernel `decide` tests in
--- Dagcheck.Tests); it is registry hygiene, not part of the soundness theorems.
+-- Closure/cycle code is executable registry hygiene, not part of the soundness theorems.
+-- The adversarial fixture suite ships with the CLI (checker/tests); until then no test
+-- coverage is claimed for this module beyond the review probes reproduced there.
 namespace Dagcheck
 
 inductive EdgeKind where
@@ -33,27 +34,36 @@ def bfs : Nat → (String → List String) → List String → List String → L
     let next := (frontier.flatMap step).filter (fun w => w ∉ visited)
     if next.isEmpty then visited else bfs fuel step next (visited ++ next)
 
+/-- All endpoints mentioned by edges. Traversal and cycle detection are driven by THIS
+    set, never by a caller-supplied node list: review defect D2 showed fuel keyed to a
+    partial node list silently truncated closures and hid cycles routing through
+    unlisted endpoints. Fuel = edge count + 1 is complete: any simple path has length
+    at most the number of edges. The bridge additionally reports every edge endpoint
+    that is not a registry entry as an error (dangling endpoints are invalid input,
+    surfaced loudly - but traversal itself no longer depends on that validation). -/
+def edgeEndpoints (es : List GEdge) : List String :=
+  (es.flatMap (fun e => [e.src, e.dst])).eraseDups
+
 /-- Upstream chain: everything u is based on (transitive premises), following edges outward. -/
-def upstreamOf (nodes : List String) (es : List GEdge) (kinds : List EdgeKind) (u : String) : List String :=
-  (bfs (nodes.length + 1) (stepOut es kinds) [u] [u]).erase u
+def upstreamOf (es : List GEdge) (kinds : List EdgeKind) (u : String) : List String :=
+  (bfs (es.length + 1) (stepOut es kinds) [u] [u]).erase u
 
 /-- Blast radius: everything that depends on u (transitive dependents), edges reversed. -/
-def blastRadiusOf (nodes : List String) (es : List GEdge) (kinds : List EdgeKind) (u : String) : List String :=
-  (bfs (nodes.length + 1) (stepIn es kinds) [u] [u]).erase u
+def blastRadiusOf (es : List GEdge) (kinds : List EdgeKind) (u : String) : List String :=
+  (bfs (es.length + 1) (stepIn es kinds) [u] [u]).erase u
 
 /-- Nodes lying on a cycle within `kinds` (including plain self-citation). -/
-def cyclicNodes (nodes : List String) (es : List GEdge) (kinds : List EdgeKind) : List String :=
+def cyclicNodes (es : List GEdge) (kinds : List EdgeKind) : List String :=
+  let nodes := edgeEndpoints (es.filter (fun e => e.kind ∈ kinds))
   nodes.filter (fun u =>
     let out := stepOut es kinds u
     out.contains u ||
-    (bfs (nodes.length + 1) (stepOut es kinds) (out.filter (· ≠ u)) (out.filter (· ≠ u))).contains u)
+    (bfs (es.length + 1) (stepOut es kinds) (out.filter (· ≠ u)) (out.filter (· ≠ u))).contains u)
 
 /-- Dependency-cycle check over proof-dependency edges only. -/
-def depCycleNodes (nodes : List String) (es : List GEdge) : List String :=
-  cyclicNodes nodes es depKinds
+def depCycleNodes (es : List GEdge) : List String := cyclicNodes es depKinds
 
 /-- History-edge acyclicity, checked separately (a supersedes loop is data corruption). -/
-def supersedesCycleNodes (nodes : List String) (es : List GEdge) : List String :=
-  cyclicNodes nodes es [.supersedes]
+def supersedesCycleNodes (es : List GEdge) : List String := cyclicNodes es [.supersedes]
 
 end Dagcheck

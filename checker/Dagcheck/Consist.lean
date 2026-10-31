@@ -9,8 +9,11 @@ def atomsOfForm : Form → List String
   | .conj a b => atomsOfForm a ++ atomsOfForm b
   | .disj a b => atomsOfForm a ++ atomsOfForm b
 
-/-- Atoms occurring across a premise set. -/
-def atomsOf (ps : List (String × Form)) : List String := ps.flatMap (fun p => atomsOfForm p.2)
+/-- Atoms occurring across a premise set, DISTINCT (review defect D1: occurrence counts
+    silently inflated the enumeration dimension - e.g. one premise P->P counted atom P
+    twice and forced refusals at cap 1). -/
+def atomsOf (ps : List (String × Form)) : List String :=
+  (ps.flatMap (fun p => atomsOfForm p.2)).eraseDups
 
 /-- Every valuation over exactly the given atom names. -/
 def allValsOver : List String → List Assign
@@ -123,7 +126,7 @@ theorem evalOpt_agree {v1 v2 : Assign} {f : Form}
 
 theorem mem_atomsOf {ps : List (String × Form)} {p : String × Form} {a : String}
     (hp : p ∈ ps) (ha : a ∈ atomsOfForm p.2) : a ∈ atomsOf ps :=
-  List.mem_flatMap.mpr ⟨p, hp, ha⟩
+  List.mem_eraseDups.mpr (List.mem_flatMap.mpr ⟨p, hp, ha⟩)
 
 theorem mem_allValsOver {atoms : List String} {v : Assign}
     (h : ∀ a ∈ atoms, (lookupA v a).isSome = true) :

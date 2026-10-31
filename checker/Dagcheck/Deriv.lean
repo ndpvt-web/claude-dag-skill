@@ -5,12 +5,17 @@ import Dagcheck.Rules
 -- ID must already be known when the step is checked).
 namespace Dagcheck
 
-/-- Sequential derivation check. Returns the extended environment on success. -/
+/-- Sequential derivation check. Returns the extended environment on success.
+    A step whose id is ALREADY known is rejected (review defect D3: reusing an id
+    silently shadowed the earlier entry through lookupF first-match). -/
 def checkDeriv (known : List (String × Form)) : List Step → Option (List (String × Form))
   | [] => some known
   | s :: rest =>
     match applyRule known s with
-    | some c => if c == s.conclusion then checkDeriv ((s.id, s.conclusion) :: known) rest else none
+    | some c =>
+      if c == s.conclusion && !(known.any (fun p => p.1 == s.id)) then
+        checkDeriv ((s.id, s.conclusion) :: known) rest
+      else none
     | none   => none
 
 /-- Chain soundness: every entry the checker accepts (premises + derived steps) holds in
@@ -30,8 +35,10 @@ theorem checkDeriv_sound (known : List (String × Form)) (steps : List Step) (ou
     · rename_i c happ
       split at h
       · rename_i hcc
-        rw [beq_eq] at hcc
-        subst hcc
+        simp only [Bool.and_eq_true] at hcc
+        obtain ⟨hcc1, -⟩ := hcc
+        rw [beq_eq] at hcc1
+        subst hcc1
         have hs : evalOpt v s.conclusion = some true :=
           applyRule_sound known s v hknown (hcov s (List.Mem.head _)) happ
         exact ih _ _ h (by

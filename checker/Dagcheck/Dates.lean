@@ -1,5 +1,7 @@
--- Date arithmetic for the registry-spec staleness policy. Pure and total; tested against
--- known epoch values in Dagcheck.Tests.
+-- Date arithmetic for the registry-spec staleness policy. Pure and total. Cross-checked
+-- against Python epoch values by the independent reviewer (leap years, negative eras,
+-- strict 4-2-2 formatting, strict-> staleness boundary); the fixture suite keeps those
+-- cases as regressions.
 namespace Dagcheck
 
 structure Date where
