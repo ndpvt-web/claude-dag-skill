@@ -64,6 +64,22 @@ Open `graph/index.html` in any browser and load that `provenance.json` to see th
 graph (fully offline; nothing is sent anywhere). Details:
 `references/verified-checker.md` and `references/graph-model.md`.
 
+## Running the tests
+
+The checker ships with a test suite under `checker/tests/`: 48 fixture registries
+(each with an `EXPECTED.json` the checker output must match exactly) plus a
+label-edit check confirming that renaming a fact never marks it as changed.
+After `lake build`:
+
+```
+python3 checker/tests/run_fixtures.py
+```
+
+The fixtures include hostile inputs - oversized numbers, duplicate keys, tombstone
+cycles, drifted fingerprints - so a passing run means bad registries are rejected
+loudly instead of guessed at. The suite is read-only: it never edits your `.dag/`
+files.
+
 ## How to install it
 
 1. Copy this whole folder into `~/.claude/skills/DAG/`
