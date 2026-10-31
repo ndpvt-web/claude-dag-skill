@@ -13,6 +13,7 @@ dagcheck check <registry-dir> [--today YYYY-MM-DD] [--cap N]   # validate + veri
 dagcheck graph <registry-dir> [--today YYYY-MM-DD]   # emit provenance.json (see graph-model.md)
 dagcheck check-step <registry-dir> --premises '["A1","H1"]' \
     --step '{"id":"T9","conclusion":<form-json>,"rule":"modus ponens","cites":["A1","H1"]}'
+dagcheck export <registry-dir> --format graphml|cypher [--out PATH]   # read-only export
 ```
 
 `--cap N` raises the consistency ceiling from the default 20 distinct atoms. N above
@@ -28,6 +29,21 @@ rejected work.
 `check` exits 1 when any error-severity finding or any rejected/blocked verdict
 exists, else 0. Without `--today`, time-based staleness is skipped and structural
 checks still run.
+
+Every `check` report carries a `coverage` object: entries active vs under-review vs
+tombstoned, theorem verdicts by class, the machine-checkable share of theorems, and
+atom-table usage. Counts are computed from the live type files (never the committed
+baseline), tombstones are excluded from active denominators, and drifted theorems
+count under stale / upstream-stale - never as verified.
+
+`export` serializes the provenance graph as GraphML or a Cypher CREATE script for
+external tooling. It is read-only over the registry, deterministic (fixed node/edge
+order), and fails closed on an empty registry (exit 2, no artifact), same as
+`graph`. `--out` is atomic temp+rename. Edge direction matches provenance.json
+(from cites/depends/supersedes to); supersedes stays a labeled history edge.
+Strings are escaped for the target format (fixture export-hostile roundtrips a
+hostile label through both); exit is 1 when the registry has error-level findings,
+so a broken registry never produces a silently green export.
 
 ## What "verified" means (and what it does not)
 

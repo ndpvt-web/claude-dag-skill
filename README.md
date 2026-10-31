@@ -74,19 +74,75 @@ Open `graph/index.html` in any browser and load that `provenance.json` to explor
 
 ## Running the tests
 
-The checker ships with a test suite under `checker/tests/`: 48 fixture registries (each with an `EXPECTED.json` of the results the checker must produce) plus a label-edit check confirming that renaming a fact's label never marks it as changed (IDs are permanent). After `lake build`:
+The checker ships with a test suite under `checker/tests/`: 50 fixture registries (each with an `EXPECTED.json` of the results the checker must produce) plus a label-edit check confirming that renaming a fact's label never marks it as changed (IDs are permanent). After `lake build`:
 
 ```
-python3 checker/tests/run_fixtures.py
+python3 checker/tests/run_fixtures.py      # fixture registries + exports + coverage
+python3 checker/tests/test_doc_drift.py    # docs must not name things the code lacks
+python3 hooks/test_hooks.py                # git hook behavior in real temp repos
+python3 benchmarks/test_measure_tokens.py  # measurement harness
+sh checker/tests/test_installer.sh         # installer behavior
 ```
 
-The fixtures include hostile inputs - oversized numbers, duplicate keys, tombstone cycles, drifted fingerprints - so a passing run means bad registries are rejected loudly instead of guessed at. The suite is read-only: it never edits your `.dag/` files.
+The fixtures include hostile inputs - oversized numbers, duplicate keys, tombstone cycles, drifted fingerprints - so a passing run means bad registries are rejected loudly instead of guessed at. The suite is read-only: it never edits your `.dag/` files. The doc-drift suite parses the documentation itself and fails when the docs name a command, flag, verdict, field, fixture, or edge kind the code does not have (and vice versa) - so a stale doc breaks CI instead of a user's day.
 
 ## How to install it
+
+One command:
+
+```
+./install.sh
+```
+
+That copies the skill into `~/.claude/skills/DAG/` and builds the Lean checker
+(installing the toolchain if needed). `./install.sh --skip-lean` installs just the
+skill - every `/dag` workflow works, and you can build the checker later with
+`cd checker && lake build`. Re-running the installer is safe: it backs up an
+existing install before overwriting and never touches any `.dag` directory.
+
+Or do it by hand:
 
 1. Copy this whole folder into `~/.claude/skills/DAG/`
 2. That's it - Claude Code will pick it up automatically
 3. Inside a project, run `/dag init` to get started
+
+## Git hooks: automatic stale checks that never touch the baseline
+
+`hooks/` ships a pre-commit and a post-commit hook for projects that use a registry:
+
+- **pre-commit** runs `dagcheck check` (read-only, with `--today`) when registry
+  files are staged. Errors and rejected/blocked verdicts block the commit; warnings
+  such as content drift are reported and the commit proceeds.
+- **post-commit** reports drift against the committed baseline. It can only report -
+  the commit has already landed - and it NEVER regenerates `provenance.json`.
+  Re-baselining on every commit would silently bless whatever landed, including
+  edits that bypassed review. After you review and accept a change, re-baseline
+  explicitly: `dagcheck graph .dag/registry --out .dag/registry/provenance.json`.
+
+Install them into a project: `cp hooks/pre-commit hooks/post-commit <project>/.git/hooks/`
+
+## Coverage self-report and exports
+
+Every `dagcheck check` report now includes a `coverage` object: how many entries are
+active, how many theorems are verified vs rejected vs blocked vs unchecked, how many
+are machine-checkable at all, and how much of the atom table is used. Counts come
+from the live type files (never the baseline), tombstones are excluded from active
+denominators, and drifted theorems count as stale - never as verified.
+
+`dagcheck export` serializes the provenance graph for other tools, read-only and
+deterministic:
+
+```
+dagcheck export path/to/.dag/registry --format graphml [--out graph.graphml]
+dagcheck export path/to/.dag/registry --format cypher  [--out graph.cypher]
+```
+
+## Measurement, not headlines
+
+`benchmarks/` holds the measurement protocol and `measure_tokens.py`, which reports
+the actual byte cost of a registry's three load modes (token figures are labeled
+estimates). No token-savings or quality claim is quoted until it comes from that
+protocol on a real model - not from another tool's marketing numbers.
 
 ## Why JSON files instead of one file per fact
 

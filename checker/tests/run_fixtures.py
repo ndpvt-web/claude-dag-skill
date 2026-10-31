@@ -51,6 +51,20 @@ for name in sorted(os.listdir(FX)):
         for tid, want in exp.get("freshness", {}).items():
             if fr.get(tid) != want:
                 errs.append(f"freshness {tid}={fr.get(tid)} != {want}")
+    cov = exp.get("coverage")
+    if cov and rep:
+        def subset(want, got, path="coverage"):
+            errs_ = []
+            if isinstance(want, dict):
+                for k, v in want.items():
+                    if not isinstance(got, dict) or k not in got:
+                        errs_.append(f"{path}.{k} missing")
+                    else:
+                        errs_ += subset(v, got[k], f"{path}.{k}")
+            elif want != got:
+                errs_.append(f"{path}={got!r} != {want!r}")
+            return errs_
+        errs += subset(cov, rep.get("coverage"))
     cstep = exp.get("check_step")
     if cstep:
         cr = run([BIN, "check-step", d, "--today", today,
@@ -114,6 +128,92 @@ for name in sorted(os.listdir(FX)):
                 errs.append(f"dep cycles {gv['cycles']['dependency']} != {gexp['dependency_cycles']}")
             if "supersedes_cycles" in gexp and sorted(gv["cycles"]["supersedes"]) != sorted(gexp["supersedes_cycles"]):
                 errs.append(f"sup cycles {gv['cycles']['supersedes']} != {gexp['supersedes_cycles']}")
+            for nid, want in gexp.get("nodes", {}).items():
+                node = next((n for n in gv.get("nodes", []) if n.get("id") == nid), None)
+                if node is None:
+                    errs.append(f"provenance node {nid} missing")
+                    continue
+                for field, wv in want.items():
+                    if node.get(field) != wv:
+                        errs.append(f"provenance node {nid}.{field}={node.get(field)!r} != {wv!r}")
+    xps = exp.get("export")
+    if xps:
+        import hashlib
+        def registry_hashes():
+            return {f: hashlib.sha256(open(os.path.join(d, f), "rb").read()).hexdigest()
+                    for f in sorted(os.listdir(d)) if f.endswith(".json")}
+        def cypher_esc(s):  # independent reference escaper
+            out = []
+            for c in s:
+                if c == "\\": out.append("\\\\")
+                elif c == "'": out.append("\\'")
+                elif c == "\n": out.append("\\n")
+                elif c == "\r": out.append("\\r")
+                elif c == "\t": out.append("\\t")
+                elif ord(c) < 0x20: out.append(" ")
+                else: out.append(c)
+            return "".join(out)
+        for xp in xps:
+            before = registry_hashes()
+            cmd = [BIN, "export", d, "--today", today]
+            if xp.get("format") is not None:
+                cmd += ["--format", xp["format"]]
+            xr1 = run(cmd)
+            xr2 = run(cmd)
+            after = registry_hashes()
+            tag = f"export[{xp.get('format')}]"
+            if xr1.returncode != xp["exit"]:
+                errs.append(f"{tag}: exit {xr1.returncode} != {xp['exit']}; stderr={xr1.stderr[:200]}")
+            if xp.get("exit") == 0 and xr1.stdout != xr2.stdout:
+                errs.append(f"{tag}: not deterministic (two runs differ)")
+            if before != after:
+                errs.append(f"{tag}: registry files changed by a READ-ONLY export")
+            out = xr1.stdout
+            if xp.get("format") == "graphml" and xp["exit"] == 0:
+                try:
+                    import xml.etree.ElementTree as ET
+                    root = ET.fromstring(out)
+                    ns = "{http://graphml.graphdrawing.org/xmlns}"
+                    nodes = root.iter(ns + "node")
+                    edges = root.iter(ns + "edge")
+                    nn = len(list(nodes)); ne = len(list(edges))
+                    if nn != xp.get("node_count"):
+                        errs.append(f"{tag}: {nn} nodes != {xp.get('node_count')}")
+                    if ne != xp.get("edge_count"):
+                        errs.append(f"{tag}: {ne} edges != {xp.get('edge_count')}")
+                    # label roundtrip: escaped form must decode back to the exact source label
+                    th = json.load(open(os.path.join(d, "theorems.json")))
+                    for n in root.iter(ns + "node"):
+                        nid = n.get("id")
+                        for data in n.iter(ns + "data"):
+                            if data.get("key") == "d_label":
+                                src_label = None
+                                for f in ("axioms.json", "definitions.json", "hypotheses.json", "theorems.json"):
+                                    obj = json.load(open(os.path.join(d, f)))
+                                    if nid in obj:
+                                        src_label = obj[nid].get("label", "")
+                                if src_label is not None and data.text != src_label:
+                                    errs.append(f"{tag}: label roundtrip failed for {nid}: {data.text!r} != {src_label!r}")
+                except Exception as e:
+                    errs.append(f"{tag}: graphml not well-formed XML: {e}")
+            if xp.get("format") == "cypher" and xp["exit"] == 0:
+                lines = [l for l in out.splitlines() if l.startswith("CREATE")]
+                n_nodes = len([l for l in lines if ")-[" not in l])
+                n_edges = len([l for l in lines if ")-[" in l])
+                if n_nodes != xp.get("node_count"):
+                    errs.append(f"{tag}: {n_nodes} cypher nodes != {xp.get('node_count')}")
+                if n_edges != xp.get("edge_count"):
+                    errs.append(f"{tag}: {n_edges} cypher edges != {xp.get('edge_count')}")
+                th = json.load(open(os.path.join(d, "theorems.json")))
+                for tid, e in th.items():
+                    want = "label: '" + cypher_esc(e.get("label", "")) + "'"
+                    if not any(want in l for l in lines):
+                        errs.append(f"{tag}: escaped label for {tid} not found; want {want!r}")
+                for l in lines:
+                    if ")-[" in l and not __import__("re").match(r"^CREATE \(n\d+\)-\[:(CITES|DEPENDS_ON|SUPERSEDES)\]->\(n\d+\)$", l):
+                        errs.append(f"{tag}: malformed relationship line: {l!r}")
+            if xp.get("comment_contains") and xp["comment_contains"] not in out and xp["comment_contains"] not in xr1.stderr:
+                errs.append(f"{tag}: missing comment {xp['comment_contains']!r}")
     status = "PASS" if not errs else "FAIL"
     print(f"{status} {name}")
     for e in errs:

@@ -1,0 +1,58 @@
+{
+ "T1": {
+  "id": "T1",
+  "type": "theorem",
+  "label": "t1",
+  "statement": "Statement of T1.",
+  "created": "2026-05-01",
+  "created_by": "human",
+  "status": "active",
+  "derived_from": [
+   "A1",
+   "H1"
+  ],
+  "inference_rule": "modus ponens",
+  "derivation_note": "A1: P->Q; H1: P; so Q.",
+  "proof_confidence": "CERTAIN",
+  "form": {
+   "atom": "Q"
+  },
+  "session_derived": "2026-05-17"
+ },
+ "T2": {
+  "id": "T2",
+  "type": "theorem",
+  "label": "t2",
+  "statement": "Statement of T2.",
+  "created": "2026-05-01",
+  "created_by": "human",
+  "status": "active",
+  "derived_from": [
+   "A1",
+   "D1"
+  ],
+  "inference_rule": "conjunction + modus ponens",
+  "derivation_note": "prose combination",
+  "proof_confidence": "PROBABLE",
+  "session_derived": "2026-05-18"
+ },
+ "T3": {
+  "id": "T3",
+  "type": "theorem",
+  "label": "t3",
+  "statement": "Statement of T3.",
+  "created": "2026-05-01",
+  "created_by": "human",
+  "status": "active",
+  "derived_from": [
+   "A9"
+  ],
+  "inference_rule": "modus ponens",
+  "derivation_note": "cites a tombstone",
+  "proof_confidence": "CERTAIN",
+  "form": {
+   "atom": "Q"
+  },
+  "session_derived": "2026-05-18"
+ }
+}

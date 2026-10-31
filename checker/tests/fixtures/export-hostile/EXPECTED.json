@@ -1,0 +1,24 @@
+{
+ "exit": 0,
+ "verdicts": {
+  "T1": "verified"
+ },
+ "export": [
+  {
+   "format": "graphml",
+   "exit": 0,
+   "node_count": 6,
+   "edge_count": 3
+  },
+  {
+   "format": "cypher",
+   "exit": 0,
+   "node_count": 6,
+   "edge_count": 3
+  },
+  {
+   "format": "yaml",
+   "exit": 2
+  }
+ ]
+}

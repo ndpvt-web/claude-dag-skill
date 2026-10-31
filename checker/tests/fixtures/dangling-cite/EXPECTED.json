@@ -8,5 +8,21 @@
  ],
  "verdicts": {
   "T1": "blocked"
- }
+ },
+ "export": [
+  {
+   "format": "graphml",
+   "exit": 1,
+   "node_count": 6,
+   "edge_count": 2,
+   "comment_contains": "1 edge(s) skipped"
+  },
+  {
+   "format": "cypher",
+   "exit": 1,
+   "node_count": 6,
+   "edge_count": 2,
+   "comment_contains": "1 edge(s) skipped"
+  }
+ ]
 }

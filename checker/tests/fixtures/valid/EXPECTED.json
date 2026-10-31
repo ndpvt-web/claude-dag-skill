@@ -33,6 +33,23 @@
    ]
   },
   "dependency_cycles": [],
-  "supersedes_cycles": []
+  "supersedes_cycles": [],
+  "nodes": {
+   "T1": {
+    "rule": "modus ponens",
+    "confidence": "CERTAIN",
+    "verdict": "verified"
+   },
+   "A1": {
+    "rule": null,
+    "confidence": null
+   }
+  }
+ },
+ "coverage": {
+  "entries_active": 5,
+  "tombstones": 1,
+  "theorems_total": 1,
+  "verified_share_of_machine_checkable": "1/1"
  }
 }

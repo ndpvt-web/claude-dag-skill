@@ -72,7 +72,12 @@ make("valid", lambda f: None,
                               "rule":"modus ponens","cites":["A1","H1"]},
                      "exit": 2},
       "graph": {"upstream": {"T1": ["A1","H1"]}, "blast_radius": {"A1": ["T1"]},
-                "dependency_cycles": [], "supersedes_cycles": []}})
+                "dependency_cycles": [], "supersedes_cycles": [],
+                "nodes": {"T1": {"rule": "modus ponens", "confidence": "CERTAIN",
+                                 "verdict": "verified"},
+                          "A1": {"rule": None, "confidence": None}}},
+      "coverage": {"entries_active": 5, "tombstones": 1, "theorems_total": 1,
+                   "verified_share_of_machine_checkable": "1/1"}})
 
 # 2. duplicate key inside JSON object (strict parser must refuse)
 make("duplicate-key",
@@ -103,7 +108,11 @@ make("wrong-order-cites", m_wrong_order,
 def m_dangling(f):
     f["theorems.json"]["T1"]["derived_from"] = ["A1","H7"]
 make("dangling-cite", m_dangling,
-     {"exit": 1, "findings": [("error","citation")], "verdicts": {"T1": "blocked"}})
+     {"exit": 1, "findings": [("error","citation")], "verdicts": {"T1": "blocked"},
+      "export": [{"format": "graphml", "exit": 1, "node_count": 6, "edge_count": 2,
+                  "comment_contains": "1 edge(s) skipped"},
+                 {"format": "cypher", "exit": 1, "node_count": 6, "edge_count": 2,
+                  "comment_contains": "1 edge(s) skipped"}]})
 
 # 6. dependency cycle T1 <-> T2 -> cycle error naming nodes
 def m_dep_cycle(f):
@@ -485,5 +494,45 @@ json.dump({"exit": 0,
     "graph_out": {"exit": 0, "target": "prov-out.json",
                   "written_contains": "dagcheck-provenance/v1"}},
   open(os.path.join(d, "EXPECTED.json"), "w"), indent=1)
+
+# 43. coverage self-report: counts come from the live type files, tombstones are
+#     excluded from active denominators, verdict buckets are exact
+def _cov(f):
+    f["theorems.json"]["T2"] = entry("T2","theorem", derived_from=["A1","D1"],
+        inference_rule="conjunction + modus ponens",   # prose rule -> outside fragment
+        derivation_note="prose combination", proof_confidence="PROBABLE",
+        session_derived="2026-05-18")
+    f["theorems.json"]["T3"] = entry("T3","theorem", derived_from=["A9"],
+        inference_rule="modus ponens", derivation_note="cites a tombstone",
+        proof_confidence="CERTAIN", form={"atom":"Q"}, session_derived="2026-05-18")
+    f["hypotheses.json"]["H2"] = entry("H2","hypothesis",
+        falsification="F.", review_trigger="R.", status="under-review",
+        staleness_period_days=None, review_log=[])
+make("coverage-report", _cov,
+     {"exit": 1,   # T3 blocked verdict -> exit 1
+      "verdicts": {"T1": "verified", "T2": "unchecked", "T3": "blocked"},
+      "coverage": {
+        "entries_active": 7, "entries_under_review": 1, "tombstones": 1,
+        "theorems_total": 3,
+        "theorem_verdicts": {"verified": 1, "rejected": 0, "blocked": 1,
+                             "unchecked": 1, "stale": 0, "upstream_stale": 0,
+                             "no_verdict": 0},
+        "theorems_machine_checkable": 2,
+        "machine_checkable_share_of_theorems": "2/3",
+        "verified_share_of_machine_checkable": "1/2",
+        "atoms_declared": 3, "atoms_used_in_active_forms": 3,
+        "atoms_declared_unused": []}})
+
+# 44. exports: hostile label/statement must survive escaping; output deterministic;
+#     registry untouched (read-only)
+HOSTILE_LABEL = 'x"<script>&\'\\\n{templ}'
+def _hostile(f):
+    f["theorems.json"]["T1"]["label"] = HOSTILE_LABEL
+make("export-hostile", _hostile,
+     {"exit": 0, "verdicts": {"T1": "verified"},
+      "export": [
+        {"format": "graphml", "exit": 0, "node_count": 6, "edge_count": 3},
+        {"format": "cypher", "exit": 0, "node_count": 6, "edge_count": 3},
+        {"format": "yaml", "exit": 2}]})
 
 print("fixtures generated in", ROOT)

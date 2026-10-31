@@ -1,0 +1,31 @@
+name: ci
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  checker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install elan + Lean toolchain (pinned by checker/lean-toolchain)
+        run: curl -sSf https://elan.lean-lang.org/elan-init.sh | sh -s -- -y
+      - name: Build the checker
+        working-directory: checker
+        run: "$HOME/.elan/bin/lake build"
+      - name: Axiom audit (soundness theorems must depend on propext/Quot.sound only)
+        working-directory: checker
+        run: |
+          "$HOME/.elan/bin/lake" build Dagcheck
+          "$HOME/.elan/bin/lake" env lean tests/audit.lean
+      - name: Adversarial fixture suite
+        run: python3 checker/tests/run_fixtures.py
+      - name: Doc-code drift tests
+        run: python3 checker/tests/test_doc_drift.py
+      - name: Git hook behavior tests
+        run: python3 hooks/test_hooks.py
+      - name: Measurement harness tests
+        run: python3 benchmarks/test_measure_tokens.py
+      - name: Installer behavior tests
+        run: sh checker/tests/test_installer.sh

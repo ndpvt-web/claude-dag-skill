@@ -261,6 +261,13 @@ authoritative verdict on anything machine-checkable; the agent's own judgment is
 - Verdict vocabulary: verified / rejected / blocked / unchecked / stale. Unchecked is
   an honest non-verdict for prose rules, instantiation, and analogy — say so plainly,
   never imply the checker passed them.
+- Every `dagcheck check` report includes a `coverage` object (verdict classes,
+  machine-checkable share, atom-table usage) — quote from it, don't estimate.
+- `dagcheck export --format graphml|cypher` gives a read-only serialization for
+  external graph tools; it never mutates the registry.
+- Optional git hooks in `hooks/` run the check automatically: pre-commit blocks
+  errors, post-commit only reports drift. Neither ever regenerates provenance.json —
+  re-baselining stays an explicit, human-reviewed step.
 - The checker never mutates the registry. Citation order is rule-argument order for
   machine-checkable rules (see references/verified-checker.md for the contract and
   migration note).

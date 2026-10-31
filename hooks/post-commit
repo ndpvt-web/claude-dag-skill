@@ -1,0 +1,57 @@
+#!/bin/sh
+# DAG registry post-commit report. READ-ONLY and REPORT-ONLY.
+#
+# A post-commit hook runs after the commit has landed: it cannot block anything,
+# so its only honest job is to report. It NEVER regenerates provenance.json.
+# Re-baselining on every commit would bless whatever just landed (including edits
+# that bypassed the gated flow) and silently retire the stale-fingerprint signal
+# that /dag audit depends on. Regeneration stays an explicit, human-reviewed step:
+#
+#   dagcheck graph .dag/registry --out .dag/registry/provenance.json
+#   git add .dag/registry/provenance.json && git commit -m "Re-baseline after accepting <change>"
+#
+# Always --out (atomic temp+rename). Never shell `>` onto the live baseline: the
+# shell truncates the target before dagcheck even starts.
+#
+# Exit code is always 0 (unless git itself is broken); failures to run the checker
+# are reported, never enforced.
+
+set -u
+
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+REG="$ROOT/.dag/registry"
+[ -d "$REG" ] || exit 0
+[ -f "$REG/provenance.json" ] || exit 0
+
+BIN="${DAGCHECK_BIN:-}"
+if [ -z "$BIN" ] || [ ! -x "$BIN" ]; then
+  BIN=""
+  for cand in "$ROOT/checker/.lake/build/bin/dagcheck" \
+              "$HOME/.claude/skills/DAG/checker/.lake/build/bin/dagcheck"; do
+    if [ -x "$cand" ]; then BIN="$cand"; break; fi
+  done
+  if [ -z "$BIN" ] && command -v dagcheck >/dev/null 2>&1; then
+    BIN=$(command -v dagcheck)
+  fi
+fi
+if [ -z "$BIN" ]; then
+  exit 0
+fi
+
+TODAY=$(date +%F)
+OUT=$(mktemp) || exit 0
+"$BIN" check "$REG" --today "$TODAY" >"$OUT" 2>/dev/null
+
+if grep -q '"code":"stale-fingerprint"' "$OUT" 2>/dev/null; then
+  echo "dagcheck post-commit: content drift detected against the committed baseline:" >&2
+  grep -o '"code":"stale-fingerprint","detail":"[^"]*"' "$OUT" >&2
+  echo "dagcheck: these entries and their blast radii need recheck. After you review and" >&2
+  echo "  accept the change, re-baseline explicitly (never automatic):" >&2
+  echo "    dagcheck graph .dag/registry --out .dag/registry/provenance.json" >&2
+  echo "    git add .dag/registry/provenance.json && git commit -m 'Re-baseline after accepting change'" >&2
+fi
+if grep -q '"code":"new-since-baseline"' "$OUT" 2>/dev/null; then
+  grep -o '"code":"new-since-baseline","detail":"[^"]*"' "$OUT" >&2
+fi
+rm -f "$OUT"
+exit 0

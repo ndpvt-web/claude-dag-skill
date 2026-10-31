@@ -6,7 +6,7 @@ dagcheck CLI. READ-ONLY over the registry: it never writes, renames or deletes f
   dagcheck check-step <registry-dir> --premises '["A1","H1"]'
       --step '{"id":"T9","conclusion":<form-json>,"rule":"modus ponens","cites":["A1","H1"]}'
 -/
-import Dagcheck.Bridge
+import Dagcheck.Export
 
 namespace Dagcheck
 
@@ -26,6 +26,8 @@ def stripFlags : List String → List String
   | "--premises" :: _ :: rest => stripFlags rest
   | "--step" :: _ :: rest => stripFlags rest
   | "--cap" :: _ :: rest => stripFlags rest
+  | "--format" :: _ :: rest => stripFlags rest
+  | "--out" :: _ :: rest => stripFlags rest
   | a :: rest => a :: stripFlags rest
   | [] => []
 
@@ -114,7 +116,8 @@ def usage : String := String.intercalate "\n"
   ["dagcheck - verified checker for the DAG registry (read-only)",
    "  dagcheck check <registry-dir> [--today YYYY-MM-DD] [--cap N]",
    "  dagcheck graph <registry-dir> [--today YYYY-MM-DD] [--out PATH (atomic temp+rename; shell > redirection onto a live baseline truncates it before this binary runs - never do that)]",
-   "  dagcheck check-step <registry-dir> --premises '<json-array-of-ids>' --step '<json-object>'"]
+   "  dagcheck check-step <registry-dir> --premises '<json-array-of-ids>' --step '<json-object>'",
+   "  dagcheck export <registry-dir> --format graphml|cypher [--out PATH (atomic; read-only over the registry)]"]
 
 end Dagcheck
 
@@ -122,7 +125,7 @@ open Dagcheck in
 def main (args : List String) : IO UInt32 := do
   match args with
   | cmd :: rest =>
-    if cmd != "check" && cmd != "graph" && cmd != "check-step" then
+    if cmd != "check" && cmd != "graph" && cmd != "check-step" && cmd != "export" then
       IO.eprintln usage; return 2
     let dir? := (stripFlags rest).head?
     match dir?, getToday rest with
@@ -259,6 +262,27 @@ def main (args : List String) : IO UInt32 := do
           let nErr := (allFs.filter (fun f => f.level == "error")).length
           let nBad := (verdicts.filter (fun v => v.verdict == "rejected" || v.verdict == "blocked")).length
           return if nErr + nBad > 0 then 1 else 0
+        else if cmd == "export" then
+          let fmt := (getFlag rest "--format").getD ""
+          if !exportFormatOk fmt then
+            IO.eprintln s!"export requires --format graphml|cypher (got '{fmt}')"
+            return 2
+          -- fail closed on an empty/missing registry, same as graph: never emit an
+          -- "empty" artifact that a pipeline could mistake for a real export
+          if reg.entries.isEmpty && reg.tombstones.isEmpty then
+            IO.eprintln s!"no registry entries loaded from {dir} (missing or empty registry); refusing to emit an export artifact"
+            return 2
+          let artifact := exportRun fmt reg dir
+          match getFlag rest "--out" with
+          | some outPath =>
+            let tmp := outPath ++ ".tmp"
+            IO.FS.writeFile tmp artifact
+            IO.FS.rename tmp outPath
+            IO.eprintln s!"wrote {outPath} ({reg.all.length} nodes, format {fmt})"
+          | none => IO.println artifact
+          -- an export of a structurally broken registry is flagged, not silently green
+          let structuralErrs := (globalChecks reg).any (fun f => f.level == "error")
+          return if loadFs.any (fun f => f.level == "error") || structuralErrs then 1 else 0
         else
           -- fail closed: an empty/missing registry must never emit an "empty" artifact
           -- that a redirect could mistake for a real provenance baseline

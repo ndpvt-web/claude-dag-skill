@@ -1,0 +1,29 @@
+{
+ "exit": 1,
+ "verdicts": {
+  "T1": "verified",
+  "T2": "unchecked",
+  "T3": "blocked"
+ },
+ "coverage": {
+  "entries_active": 7,
+  "entries_under_review": 1,
+  "tombstones": 1,
+  "theorems_total": 3,
+  "theorem_verdicts": {
+   "verified": 1,
+   "rejected": 0,
+   "blocked": 1,
+   "unchecked": 1,
+   "stale": 0,
+   "upstream_stale": 0,
+   "no_verdict": 0
+  },
+  "theorems_machine_checkable": 2,
+  "machine_checkable_share_of_theorems": "2/3",
+  "verified_share_of_machine_checkable": "1/2",
+  "atoms_declared": 3,
+  "atoms_used_in_active_forms": 3,
+  "atoms_declared_unused": []
+ }
+}

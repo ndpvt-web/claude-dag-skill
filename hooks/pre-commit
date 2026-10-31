@@ -1,0 +1,65 @@
+#!/bin/sh
+# DAG registry pre-commit check. READ-ONLY: this hook never writes, renames or
+# deletes any registry file, and never regenerates provenance.json.
+#
+# Semantics (explicit):
+#   - Runs only when .dag/registry/*.json files are staged in this commit.
+#   - dagcheck check exits 1 on error-severity findings or rejected/blocked
+#     verdicts; the hook then BLOCKS the commit (that is what pre-commit is for).
+#   - Warning-level findings (including stale-fingerprint drift) are REPORTED and
+#     the commit proceeds: drift means "needs recheck", not "invalid", and the fix
+#     is review plus an explicit, human-accepted baseline regeneration - never a hook.
+#   - If no dagcheck binary is available, the hook prints a notice and allows the
+#     commit (a missing checker must not disable git); set DAGCHECK_BIN to enable.
+#   - Emergency bypass: git commit --no-verify (an explicit human act, logged by git).
+
+set -u
+
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+REG="$ROOT/.dag/registry"
+[ -d "$REG" ] || exit 0
+
+if ! git diff --cached --name-only | grep -q '^\.dag/registry/.*\.json$'; then
+  exit 0
+fi
+
+BIN="${DAGCHECK_BIN:-}"
+if [ -z "$BIN" ] || [ ! -x "$BIN" ]; then
+  BIN=""
+  for cand in "$ROOT/checker/.lake/build/bin/dagcheck" \
+              "$HOME/.claude/skills/DAG/checker/.lake/build/bin/dagcheck"; do
+    if [ -x "$cand" ]; then BIN="$cand"; break; fi
+  done
+  if [ -z "$BIN" ] && command -v dagcheck >/dev/null 2>&1; then
+    BIN=$(command -v dagcheck)
+  fi
+fi
+if [ -z "$BIN" ]; then
+  echo "dagcheck: binary not found; skipping read-only registry check (set DAGCHECK_BIN to enable)." >&2
+  exit 0
+fi
+
+TODAY=$(date +%F)
+OUT=$(mktemp) || exit 1
+"$BIN" check "$REG" --today "$TODAY" >"$OUT" 2>/dev/null
+RC=$?
+
+if [ "$RC" -eq 1 ]; then
+  echo "dagcheck pre-commit: registry check FAILED (error findings or rejected/blocked verdicts):" >&2
+  grep -o '"level":"error","code":"[^"]*","detail":"[^"]*"' "$OUT" >&2
+  grep -o '"id":"[^"]*","verdict":"rejected"[^}]*}' "$OUT" >&2
+  grep -o '"id":"[^"]*","verdict":"blocked"[^}]*}' "$OUT" >&2
+  echo "dagcheck: commit blocked. Fix the registry, or bypass explicitly with git commit --no-verify." >&2
+  rm -f "$OUT"
+  exit 1
+fi
+
+if grep -q '"level":"warning"' "$OUT" 2>/dev/null; then
+  echo "dagcheck pre-commit: check passed with warnings (commit proceeds):" >&2
+  grep -o '"code":"[^"]*","detail":"[^"]*"' "$OUT" | grep -v '^\(,"detail"\)' >&2
+  echo "dagcheck: warnings are reports, not blocks. Drift is resolved by review + explicit" >&2
+  echo "  dagcheck graph .dag/registry --out .dag/registry/provenance.json" >&2
+  echo "  after you accept the change - never by a hook." >&2
+fi
+rm -f "$OUT"
+exit 0

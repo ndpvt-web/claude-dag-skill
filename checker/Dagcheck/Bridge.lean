@@ -86,6 +86,42 @@ def registryEdges (r : Registry) : List GEdge :=
     (e.dependsOn.map (fun d => ⟨EdgeKind.depends, e.id, d⟩)) ++
     (match e.supersededBy with | some s => [⟨EdgeKind.supersedes, s, e.id⟩] | none => []))
 
+/-- Coverage self-report: how much of the LIVE registry the checker can and did verify.
+    Counts come from the type files (never the provenance baseline); tombstones are
+    excluded from every active denominator; drifted theorems count under stale /
+    upstream-stale (display verdicts), never as verified. -/
+def coverageJson (r : Registry) (staleIds upStale : List String) (verdicts : List Verdict) : String :=
+  let active := r.entries.filter (fun e => Registry.effectiveStatus e == .active)
+  let underReview := r.entries.filter (fun e => Registry.effectiveStatus e == .underReview)
+  let theorems := r.entries.filter (fun e => e.type == .theorem)
+  let disp := verdicts.map (displayVerdict staleIds upStale)
+  let cnt (s : String) : Nat := (disp.filter (fun v => v.verdict == s)).length
+  let nVerified := cnt "verified"
+  let machineCheckable := theorems.filter (fun e =>
+    e.form.isSome && match e.inferenceRule with
+      | some rn => (match ruleSpecOfName rn with | .outside _ => false | _ => true)
+      | none => false)
+  let usedAtoms := (active.flatMap (fun e => match e.form with | some f => atomsOfForm f | none => [])).eraseDups
+  let declared := r.atomTable.map Prod.fst
+  let unused := declared.filter (fun a => a ∉ usedAtoms)
+  jObj
+    [("scope", jStr "computed from the live registry type files (never the provenance baseline); tombstones excluded from active denominators; drifted theorems count as stale/upstream-stale, never as verified; unchecked is an honest non-verdict, not a pass"),
+     ("entries_active", jNum active.length),
+     ("entries_under_review", jNum underReview.length),
+     ("tombstones", jNum r.tombstones.length),
+     ("theorems_total", jNum theorems.length),
+     ("theorem_verdicts", jObj
+        [("verified", jNum nVerified), ("rejected", jNum (cnt "rejected")),
+         ("blocked", jNum (cnt "blocked")), ("unchecked", jNum (cnt "unchecked")),
+         ("stale", jNum (cnt "stale")), ("upstream_stale", jNum (cnt "upstream-stale")),
+         ("no_verdict", jNum (theorems.length - disp.length))]),
+     ("theorems_machine_checkable", jNum machineCheckable.length),
+     ("machine_checkable_share_of_theorems", jStr (toString machineCheckable.length ++ "/" ++ toString theorems.length)),
+     ("verified_share_of_machine_checkable", jStr (toString nVerified ++ "/" ++ toString machineCheckable.length)),
+     ("atoms_declared", jNum declared.length),
+     ("atoms_used_in_active_forms", jNum usedAtoms.length),
+     ("atoms_declared_unused", jStrArr unused)]
+
 /-- Full check report. `parseFs` are load/parse findings; everything else is derived here. -/
 def reportJson (r : Registry) (parseFs staleFs : List Finding) (staleIds : List String)
     (baseline : Bool) (cap : Nat) (today? : Option Date) (dir : String) : String :=
@@ -114,7 +150,8 @@ def reportJson (r : Registry) (parseFs staleFs : List Finding) (staleIds : List 
           ((verdicts.find? (fun v => v.id == e.id)).map (displayVerdict staleIds upStale)))),
      ("graph", jObj [("nodes", jNum r.all.length), ("edges", jNum edges.length),
         ("dependency_cycle_nodes", jStrArr (depCycleNodes edges)),
-        ("supersedes_cycle_nodes", jStrArr (supersedesCycleNodes edges))])]
+        ("supersedes_cycle_nodes", jStrArr (supersedesCycleNodes edges))]),
+     ("coverage", coverageJson r staleIds upStale verdicts)]
 
 /-- provenance.json: the canonical serialization of the derivation graph (graph model). -/
 def provenanceJson (r : Registry) (staleIds : List String) (today? : Option Date) (dir : String) : String :=
@@ -131,6 +168,8 @@ def provenanceJson (r : Registry) (staleIds : List String) (today? : Option Date
      ("stale_now", if e.staleNow then "true" else "false"),
      ("upstream_stale", if e.id ∈ upStale then "true" else "false"),
      ("freshness", jStr (freshnessOf staleIds upStale true e.id)),
+     ("rule", jOptStr e.inferenceRule),
+     ("confidence", jOptStr e.proofConfidence),
      ("verdict", match verdicts.find? (fun v => v.id == e.id) with
        | some v => jStr (displayVerdict staleIds upStale v).verdict
        | none => jNull)]
@@ -147,5 +186,6 @@ def provenanceJson (r : Registry) (staleIds : List String) (today? : Option Date
         ["DERIVED artifact: regenerate after any registry change; authoritative content lives in the type-file fields. This file is never independently writable.",
          "cites/depends are dependency edges; supersedes (superseded_by) is a HISTORY edge and never enters dependency closures or dependency cycles.",
          "upstream[id]: everything id transitively depends on. blast_radius[id]: everything that transitively cites id. A changed fingerprint means the blast radius NEEDS RECHECK - never a claim of invalidity or of changed runtime behavior.",
-         "fingerprint: non-cryptographic hashText over the entry's CONTENT fields (type, statement, created_by, citations, rule, confidence, form) - the fields a derivation depends on. Label edits never drift it. IDs are permanent by policy and are never renamed."])]
+         "fingerprint: non-cryptographic hashText over the entry's CONTENT fields (type, statement, created_by, citations, rule, confidence, form) - the fields a derivation depends on. Label edits never drift it. IDs are permanent by policy and are never renamed.",
+         "verdict is the checker's current result. confidence is the entry author's recorded self-assessment (CERTAIN/PROBABLE) from the registry type file - never a machine verdict; a verified verdict and a PROBABLE confidence say different things and neither upgrades the other."])]
 end Dagcheck

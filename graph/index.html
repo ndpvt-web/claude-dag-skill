@@ -81,7 +81,7 @@
   <span id="zoomctl">
     <button type="button" onclick="zoomFit()">fit</button><button type="button" onclick="zoomStep(1.25)">+</button><button type="button" onclick="zoomStep(0.8)">-</button><button type="button" onclick="zoom100()">100%</button>
   </span>
-  <span class="legend"><b>blue arrow</b> dependency &nbsp;<b>purple dashed</b> history (never in dependency closures) &nbsp;<b>red</b> cycle &nbsp;|&nbsp; status bar: <b style="color:var(--ok)">verified</b> <b style="color:var(--err)">rejected</b> <b style="color:var(--warn)">blocked</b> <b style="color:var(--unc)">unchecked</b> <b style="color:#e3d26b">stale</b> <b style="color:#e3a56b">upstream-stale</b> (needs recheck) &nbsp;|&nbsp; click a node: <b style="color:var(--ok)">green</b> = upstream chain, <b style="color:var(--err)">red outline</b> = blast radius (needs recheck)</span>
+  <span class="legend"><b>verdict</b> = checker's current result; <b>confidence</b> = author's self-assessment, not machine-checked &nbsp;|&nbsp; <b>blue arrow</b> dependency &nbsp;<b>purple dashed</b> history (never in dependency closures) &nbsp;<b>red</b> cycle &nbsp;|&nbsp; status bar: <b style="color:var(--ok)">verified</b> <b style="color:var(--err)">rejected</b> <b style="color:var(--warn)">blocked</b> <b style="color:var(--unc)">unchecked</b> <b style="color:#e3d26b">stale</b> <b style="color:#e3a56b">upstream-stale</b> (needs recheck) &nbsp;|&nbsp; click a node: <b style="color:var(--ok)">green</b> = upstream chain, <b style="color:var(--err)">red outline</b> = blast radius (needs recheck)</span>
 </header>
 <main>
   <div id="canvaswrap"><div id="zoom"><svg id="svg" xmlns="http://www.w3.org/2000/svg"></svg></div></div>
@@ -107,6 +107,8 @@ function validProv(j){
   for (const n of j.nodes){
     if (!n || typeof n.id !== "string" || typeof n.type !== "string") return "every node needs string id and type";
     if (n.verdict !== undefined && n.verdict !== null && typeof n.verdict !== "string") return "node verdict must be a string";
+    if (n.rule !== undefined && n.rule !== null && typeof n.rule !== "string") return "node rule must be a string";
+    if (n.confidence !== undefined && n.confidence !== null && typeof n.confidence !== "string") return "node confidence must be a string";
     if (n.label !== undefined && typeof n.label !== "string") return "node label must be a string";
   }
   for (const e of j.edges){
@@ -267,6 +269,10 @@ function render(){
     <h2>${esc(selNode.id)}${vchip(selNode.verdict)}${(selNode.stale_now==="true"||selNode.freshness==="stale")?'<span class="vchip stale">stale - needs recheck</span>':''}${((selNode.upstream_stale==="true"||selNode.freshness==="upstream-stale")&&selNode.stale_now!=="true"&&selNode.freshness!=="stale")?'<span class="vchip upstream-stale">upstream-stale - needs recheck</span>':''}</h2>
     <div class="meta">${esc(selNode.type)} / ${esc(selNode.status)}
 fingerprint ${esc(selNode.fingerprint)}</div>
+    <h3>Provenance</h3>
+    <div class="meta">checker verdict: ${esc(selNode.verdict || "none (not a machine-checked entry)")}
+rule: ${esc(selNode.rule || "-")}
+author confidence: ${esc(selNode.confidence || "-")}${selNode.confidence ? "\n(recorded by the entry author at write time; a self-assessment, never the checker's verdict - neither upgrades the other)" : ""}</div>
     <h3>Upstream chain - what this rests on (${up.size})</h3>
     <div>${[...up].map(pill).join("")||'<span class="meta">none</span>'}</div>
     <h3>Blast radius - needs recheck if this changes (${blast.size})</h3>
