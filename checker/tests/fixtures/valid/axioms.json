@@ -1,0 +1,4 @@
+{
+  "A1": {"id":"A1","type":"axiom","label":"retention-driver","statement":"Retention is the primary growth driver.",
+    "rationale":"Founder decision, 2026-05.","form":{"imp":[{"atom":"P"},{"atom":"Q"}]},"created":"2026-05-01","status":"active"}
+}

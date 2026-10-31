@@ -1,0 +1,5 @@
+{
+  "T1": {"id":"T1","type":"theorem","label":"fix-onboarding","statement":"Fixing onboarding improves retention.",
+    "derived_from":["A1","H1"],"inference_rule":"modus ponens","derivation_note":"A1: P->Q, H1: P, so Q.",
+    "proof_confidence":"CERTAIN","form":{"atom":"Q"},"session_derived":"2026-05-17","created":"2026-05-17","status":"active"}
+}

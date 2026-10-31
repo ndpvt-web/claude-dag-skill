@@ -43,7 +43,7 @@ private partial def pStringChars : List Char → Except String (String × List C
           let n := a * 4096 + b * 256 + c * 16 + d
           if 0xD800 ≤ n && n ≤ 0xDFFF then .error "surrogate-pair \\u escapes unsupported (use literal UTF-8)"
           else match pStringChars rest' with
-            | .ok (s, r) => .ok (String.push s (Char.ofNat n), r)
+            | .ok (s, r) => .ok (String.singleton (Char.ofNat n) ++ s, r)
             | .error e' => .error e'
         | _, _, _, _ => .error "bad \\uXXXX escape"
       | _ => .error "truncated \\u escape"
@@ -52,18 +52,18 @@ private partial def pStringChars : List Char → Except String (String × List C
       | .error e' => .error e'
       | .ok ch =>
         match pStringChars rest with
-        | .ok (s, r) => .ok (String.push s ch, r)
+        | .ok (s, r) => .ok (String.singleton ch ++ s, r)
         | .error e' => .error e'
   | c :: rest =>
     match pStringChars rest with
-    | .ok (s, r) => .ok (String.push s c, r)
+    | .ok (s, r) => .ok (String.singleton c ++ s, r)
     | .error e => .error e
 
 private def takeDigits : List Char → String × List Char
   | c :: rest =>
     if c.isDigit then
       let (s, r) := takeDigits rest
-      (String.push s c, r)
+      (String.singleton c ++ s, r)
     else ("", c :: rest)
   | [] => ("", [])
 
@@ -112,7 +112,7 @@ where
     if expPart.isEmpty && (match rest with | e :: _ => e == 'e' || e == 'E' | [] => false) then
       .error "digits required in exponent"
     else
-      let e := expPart.toNat!
+      let e := if expPart.isEmpty then 0 else expPart.toNat!
       let e := if expNeg then - (e : Int) else (e : Int)
       let k : Int := (e : Int) - fracLen
       let num : JsonNumber :=

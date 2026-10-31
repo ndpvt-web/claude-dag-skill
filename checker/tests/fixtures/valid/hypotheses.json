@@ -1,0 +1,6 @@
+{
+  "H1": {"id":"H1","type":"hypothesis","label":"quality-causes-churn","statement":"Product quality is the current churn cause.",
+    "falsification":"Churn persists after quality fixes.","review_trigger":"Monthly churn review.",
+    "form":{"atom":"P"},"staleness_period_days":30,"review_log":[{"date":"2026-10-01","note":"reviewed"}],
+    "created":"2026-05-01","status":"active"}
+}

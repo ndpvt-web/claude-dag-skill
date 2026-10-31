@@ -1,0 +1,4 @@
+{
+  "D1": {"id":"D1","type":"definition","label":"onboarding","statement":"Onboarding is the first-session flow.",
+    "form":{"atom":"P"},"created":"2026-05-01","status":"active"}
+}
