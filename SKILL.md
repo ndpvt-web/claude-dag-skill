@@ -270,3 +270,5 @@ authoritative verdict on anything machine-checkable; the agent's own judgment is
 - **Entry format specs + example registry**: references/registry-spec.md
 - **Bootstrapping dialogue in full**: references/bootstrapping.md
 - **Failure mode guards + contradiction check prompt**: references/failure-modes.md
+- **Verified checker (commands, verdicts, coverage + citation-order contracts, freshness)**: references/verified-checker.md
+- **Graph model (provenance.json spec: nodes, edges, closures, cycles)**: references/graph-model.md
