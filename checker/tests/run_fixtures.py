@@ -67,6 +67,26 @@ for name in sorted(os.listdir(FX)):
                     errs.append(f"check-step reason missing '{cstep['reason_contains']}': {cv.get('reason','')[:160]}")
             except Exception as e:
                 errs.append(f"check-step output not JSON: {e}")
+    gout = exp.get("graph_out")
+    if gout:
+        out_path = os.path.join(d, gout.get("target", "provenance.json"))
+        gr = run([BIN, "graph", d, "--today", today, "--out", out_path])
+        if gr.returncode != gout["exit"]:
+            errs.append(f"graph --out exit {gr.returncode} != {gout['exit']}; stderr={gr.stderr[:200]}")
+        if "sentinel" in gout:
+            try:
+                actual = open(out_path).read()
+            except Exception as e:
+                actual = f"<unreadable: {e}>"
+            if actual != gout["sentinel"]:
+                errs.append(f"sentinel baseline overwritten by failed generation: {actual[:80]!r}")
+        if gout.get("written_contains"):
+            try:
+                actual = open(out_path).read()
+            except Exception as e:
+                actual = ""
+            if gout["written_contains"] not in actual:
+                errs.append(f"--out artifact missing {gout['written_contains']!r}: {actual[:80]!r}")
     gexp = exp.get("graph")
     if gexp:
         g = run([BIN, "graph", d, "--today", today])

@@ -1,0 +1,8 @@
+{
+ "exit": 0,
+ "graph_out": {
+  "exit": 0,
+  "target": "prov-out.json",
+  "written_contains": "dagcheck-provenance/v1"
+ }
+}

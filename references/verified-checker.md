@@ -140,7 +140,12 @@ were OOM/SIGKILL vectors: the pre-bound imp-tower probe died at 12s); registries
 50000 entries are refused; staleness_period_days is bounded to [0, 36500]; the
 consistency ceiling is 20 distinct atoms, measured at ~0.2s / ~210MB worst case
 (fixture cap20-max). `dagcheck graph` on a missing or empty registry exits 2 and
-emits NO artifact, so a redirect can never clobber a real baseline with an empty file.
+emits no artifact. IMPORTANT: shell redirection truncates the target BEFORE this binary
+runs, so `dagcheck graph DIR > DIR/provenance.json` can destroy a real baseline even on
+failure. Regenerate with the atomic form: `dagcheck graph DIR --out DIR/provenance.json`
+(temp file + rename on success only; a failed run leaves the existing baseline byte-for-byte
+intact - regression fixtures graph-out-sentinel / graph-out-success), or redirect to a
+separate temp file and `mv` it into place only after exit 0.
 
 ## What the checker does not claim
 

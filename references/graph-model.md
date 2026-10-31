@@ -1,7 +1,7 @@
 # The graph model (provenance.json)
 
 The registry is a labelled graph. The type files are the only source of truth;
-`dagcheck graph <registry-dir> > <dir>/provenance.json` derives this artifact.
+`dagcheck graph <registry-dir> --out <dir>/provenance.json` derives this artifact (atomic temp+rename; never shell-redirect onto a live baseline - `>` truncates before the binary runs).
 It is never independently writable - regenerate it after any registry change and
 commit it as the freshness baseline (see verified-checker.md).
 

@@ -65,7 +65,7 @@ def loadDir (dir : String) (today? : Option Date) : IO (Registry × List Finding
 def driftFindings (dir : String) (reg : Registry) : IO (List Finding × List String) := do
   let path := s!"{dir}/provenance.json"
   if !(← System.FilePath.pathExists path) then
-    return ([finfo "no-baseline" "no provenance.json baseline; run `dagcheck graph <dir> > <dir>/provenance.json` and commit it to enable freshness tracking"], [])
+    return ([finfo "no-baseline" "no provenance.json baseline; run `dagcheck graph <dir> --out <dir>/provenance.json` and commit it to enable freshness tracking (atomic; never shell-redirect onto a live baseline)"], [])
   let content ← IO.FS.readFile path
   match parseJsonStrict content with
   | .error e => return ([fwarn "bad-baseline" s!"provenance.json is not strict JSON ({e}); regenerate it with `dagcheck graph`"], [])
@@ -113,7 +113,7 @@ def parseStepArg (s : String) : Except String (String × Form × String × List 
 def usage : String := String.intercalate "\n"
   ["dagcheck - verified checker for the DAG registry (read-only)",
    "  dagcheck check <registry-dir> [--today YYYY-MM-DD] [--cap N]",
-   "  dagcheck graph <registry-dir> [--today YYYY-MM-DD]",
+   "  dagcheck graph <registry-dir> [--today YYYY-MM-DD] [--out PATH (atomic temp+rename; shell > redirection onto a live baseline truncates it before this binary runs - never do that)]",
    "  dagcheck check-step <registry-dir> --premises '<json-array-of-ids>' --step '<json-object>'"]
 
 end Dagcheck
@@ -266,6 +266,18 @@ def main (args : List String) : IO UInt32 := do
             IO.eprintln s!"no registry entries loaded from {dir} (missing or empty registry); refusing to emit a provenance artifact"
             return 2
           let (_, staleIds) ← driftFindings dir reg
-          IO.println (provenanceJson reg staleIds today? dir)
+          let prov := provenanceJson reg staleIds today? dir
+          match getFlag rest "--out" with
+          | some outPath =>
+            -- atomic: temp file + rename on success only. A failed generation never
+            -- truncates an existing baseline (shell `>` redirection would, BEFORE this
+            -- binary runs - never redirect onto a live provenance.json).
+            let tmp := outPath ++ ".tmp"
+            IO.FS.writeFile tmp prov
+            IO.FS.rename tmp outPath
+            IO.eprintln s!"wrote {outPath} ({reg.all.length} nodes)"
+            return 0
+          | none =>
+            IO.println prov
           return if loadFs.any (fun f => f.level == "error") then 1 else 0
   | [] => IO.eprintln usage; return 2

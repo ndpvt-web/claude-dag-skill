@@ -1,0 +1,7 @@
+{
+ "exit": 0,
+ "graph_out": {
+  "exit": 2,
+  "sentinel": "SENTINEL-BASELINE-DO-NOT-OVERWRITE"
+ }
+}

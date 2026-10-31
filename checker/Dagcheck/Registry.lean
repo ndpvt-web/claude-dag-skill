@@ -290,6 +290,15 @@ def parseTombstone (ctx : String) (key : String) (j : Json) : Except String Entr
     | some _ => .ok ""
     | none => .error s!"{ectx}: bad deprecated_on date '{ds}'"
   let _ ← reqStr ectx j "reason"
+  -- same strictness as every other file: a typo like "superseded-by" must be a loud
+  -- error, never a silently dropped history edge (D14)
+  let knownTomb := ["id", "type", "original_statement", "deprecated_on", "reason", "superseded_by"]
+  let objKeys ← match j.getObj? with
+    | .ok ps => .ok (ps.toList.map Prod.fst)
+    | .error e => .error s!"{ectx}: entry must be an object: {e}"
+  let unknown := objKeys.filter (fun k => k ∉ knownTomb)
+  if !unknown.isEmpty then
+    throw s!"{ectx}: unknown field(s) {unknown}; not part of the tombstone schema (the history edge field is spelled superseded_by)"
   let supersededBy := (j.getObjVal? "superseded_by").toOption.bind (·.getStr?.toOption)
   return { id, type := .tombstone, status := .deprecated, label := "", statement,
            supersededBy }

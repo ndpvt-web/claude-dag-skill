@@ -451,4 +451,39 @@ def _cap20(f):
 make("cap20-max", _cap20, {"exit": 0, "cap": 20,
      "findings": [("info","consistency")]})
 
+# 39. D14: tombstone typo superseded-by must be a loud error, not a dropped history edge
+def _tomb_typo(f):
+    a9 = f["deprecated.json"]["A9"]
+    a9["superseded-by"] = a9.pop("superseded_by")
+make("tombstone-typo", _tomb_typo,
+     {"exit": 1, "findings": [("error","parse")]})
+
+# 40. D14: unknown tombstone field -> loud error
+def _tomb_unknown(f):
+    f["deprecated.json"]["A9"]["review_note"] = "someone's note"
+make("tombstone-unknown-field", _tomb_unknown,
+     {"exit": 1, "findings": [("error","parse")]})
+
+# 41. file safety: a FAILED graph --out must leave an existing baseline untouched
+d = os.path.join(ROOT, "graph-out-sentinel")
+if os.path.exists(d): shutil.rmtree(d)
+os.makedirs(d)
+for fname in ["definitions.json","axioms.json","hypotheses.json","theorems.json","deprecated.json","logic.json"]:
+    open(os.path.join(d, fname), "w").write("{}")
+open(os.path.join(d, "provenance.json"), "w").write("SENTINEL-BASELINE-DO-NOT-OVERWRITE")
+json.dump({"exit": 0,
+    "graph_out": {"exit": 2, "sentinel": "SENTINEL-BASELINE-DO-NOT-OVERWRITE"}},
+  open(os.path.join(d, "EXPECTED.json"), "w"), indent=1)
+
+# 42. file safety: a SUCCESSFUL graph --out writes a real artifact (temp+rename)
+d = os.path.join(ROOT, "graph-out-success")
+if os.path.exists(d): shutil.rmtree(d)
+os.makedirs(d)
+for fname, content in BASE.items():
+    open(os.path.join(d, fname), "w").write(json.dumps(content, indent=1))
+json.dump({"exit": 0,
+    "graph_out": {"exit": 0, "target": "prov-out.json",
+                  "written_contains": "dagcheck-provenance/v1"}},
+  open(os.path.join(d, "EXPECTED.json"), "w"), indent=1)
+
 print("fixtures generated in", ROOT)
