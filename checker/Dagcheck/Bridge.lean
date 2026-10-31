@@ -93,10 +93,15 @@ def provenanceJson (r : Registry) (today? : Option Date) (dir : String) : String
   let ids := r.all.map Entry.id
   let edgeJson (g : GEdge) : String :=
     jObj [("kind", jStr (kindName g.kind)), ("from", jStr g.src), ("to", jStr g.dst)]
+  let verdicts := verifyTheorems r
   let nodeJson (e : Entry) : String := jObj
     [("id", jStr e.id), ("type", jStr e.type.typeName),
      ("status", jStr (Registry.effectiveStatus e).statusName),
-     ("label", jStr e.label), ("fingerprint", jStr (entryFingerprint e))]
+     ("label", jStr e.label), ("fingerprint", jStr (entryFingerprint e)),
+     ("stale_now", if e.staleNow then "true" else "false"),
+     ("verdict", match verdicts.find? (fun v => v.id == e.id) with
+       | some v => jStr v.verdict
+       | none => jNull)]
   jObj
     [("spec", jStr "dagcheck-provenance/v1"), ("generated_from", jStr dir),
      ("today", match today? with | some d => dateJson d | none => jNull),

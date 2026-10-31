@@ -2,61 +2,102 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DAG registry - provenance graph</title>
 <style>
   :root { --bg:#0f1216; --panel:#171c23; --ink:#dfe6ee; --dim:#8b96a3; --dep:#4c9aff;
-          --hist:#9e8cff; --err:#ff6b6b; --ok:#57d9a3; }
+          --hist:#9e8cff; --err:#ff6b6b; --ok:#57d9a3; --warn:#ffb454; --unc:#c9a227; }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--ink);
          font:14px/1.45 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
-  header { padding:14px 18px; border-bottom:1px solid #232a33; display:flex; gap:14px;
+  header { padding:12px 16px; border-bottom:1px solid #232a33; display:flex; gap:10px 16px;
            align-items:center; flex-wrap:wrap; }
-  header h1 { font-size:16px; margin:0; font-weight:600; }
-  #drop { border:1.5px dashed #334050; border-radius:8px; padding:8px 14px; color:var(--dim); }
-  main { display:grid; grid-template-columns:1fr 320px; height:calc(100vh - 57px); }
-  #canvaswrap { overflow:auto; padding:18px; }
+  header h1 { font-size:15px; margin:0; font-weight:600; }
+  #drop { border:1.5px dashed #334050; border-radius:8px; padding:6px 12px; color:var(--dim);
+          cursor:pointer; }
+  #srcbadge { font-size:12px; color:var(--dim); }
+  #srcbadge.demo { color:#111; background:var(--warn); border-radius:6px; padding:2px 8px;
+                   font-weight:700; }
+  main { display:grid; grid-template-columns:minmax(0,1fr) 340px; height:calc(100vh - 55px); }
+  #canvaswrap { overflow:auto; padding:16px; }
+  #zoom { transform-origin: top left; display:inline-block; }
   svg text { fill:var(--ink); font-size:12px; }
-  .node rect { fill:var(--panel); stroke:#334050; stroke-width:1.2; rx:6; cursor:pointer; }
+  svg .sub { fill:var(--dim); font-size:10.5px; }
+  .node rect { fill:var(--panel); stroke:#334050; stroke-width:1.2; cursor:pointer; }
   .node.sel rect { stroke:var(--dep); stroke-width:2.5; }
-  .node.blast rect { stroke:var(--err); stroke-width:2; }
-  .node.up rect { stroke:var(--ok); stroke-width:2; }
-  .edge { stroke:var(--dep); stroke-width:1.4; fill:none; opacity:.75; }
-  .edge.hist { stroke:var(--hist); stroke-dasharray:5 4; }
-  .edge.cyc { stroke:var(--err); stroke-width:2.2; opacity:1; }
+  .node.blast rect { stroke:var(--err); stroke-width:2.2; }
+  .node.up rect { stroke:var(--ok); stroke-width:2.2; }
+  .node .bar { stroke:none; }
+  .node.v-verified .bar { fill:var(--ok); }
+  .node.v-rejected .bar { fill:var(--err); }
+  .node.v-blocked .bar { fill:var(--warn); }
+  .node.v-unchecked .bar { fill:var(--unc); }
+  .node.retired rect { opacity:.55; }
+  .edge { stroke:var(--dep); stroke-width:1.4; fill:none; opacity:.8; marker-end:url(#arrDep); }
+  .edge.hist { stroke:var(--hist); stroke-dasharray:5 4; marker-end:url(#arrHist); }
+  .edge.cyc { stroke:var(--err); stroke-width:2.2; opacity:1; marker-end:url(#arrErr); }
   aside { border-left:1px solid #232a33; background:var(--panel); padding:16px; overflow:auto; }
   aside h2 { font-size:14px; margin:0 0 4px; }
-  aside h3 { font-size:12px; color:var(--dim); text-transform:uppercase; letter-spacing:.06em;
-             margin:18px 0 6px; }
+  aside h3 { font-size:11.5px; color:var(--dim); text-transform:uppercase; letter-spacing:.06em;
+             margin:16px 0 6px; }
   .pill { display:inline-block; border:1px solid #334050; border-radius:12px; padding:1px 9px;
           margin:2px 3px 2px 0; font-size:12px; cursor:pointer; }
   .pill:hover { border-color:var(--dep); }
-  .meta { color:var(--dim); font-size:12px; white-space:pre-wrap; word-break:break-all; }
-  .legend { color:var(--dim); font-size:12px; }
+  .meta { color:var(--dim); font-size:12px; white-space:pre-wrap; overflow-wrap:break-word;
+          word-break:normal; }
+  .vchip { display:inline-block; border-radius:5px; padding:0 7px; font-size:11px;
+           font-weight:700; margin-left:6px; }
+  .vchip.verified { background:var(--ok); color:#0a2; color:#07281c; }
+  .vchip.rejected { background:var(--err); color:#2b0a0a; }
+  .vchip.blocked { background:var(--warn); color:#2b1a05; }
+  .vchip.unchecked { background:var(--unc); color:#241c04; }
+  .vchip.stale { background:#e3d26b; color:#262105; }
+  .legend { color:var(--dim); font-size:12px; flex-basis:100%; }
   .legend b { color:var(--ink); font-weight:600; }
-  #cycwarn { color:var(--err); font-size:12px; }
+  #cycwarn { color:var(--err); font-size:12px; font-weight:600; }
+  /* narrow screens: sidebar stacks below the graph, both full-width.
+     The .force-mobile rules are the SAME declarations, applied by the #mobile hash
+     so the stacked layout can be exercised at any viewport width. */
+  @media (max-width: 760px) {
+    main { grid-template-columns:minmax(0,1fr); grid-template-rows:auto auto; height:auto; }
+    aside { border-left:none; border-top:1px solid #232a33; }
+  }
+  main.force-mobile { grid-template-columns:minmax(0,1fr); grid-template-rows:auto auto; height:auto; }
+  main.force-mobile aside { border-left:none; border-top:1px solid #232a33; }
 </style>
 </head>
 <body>
 <header>
   <h1>DAG registry - provenance graph</h1>
   <label id="drop">load provenance.json <input type="file" id="file" accept=".json" hidden></label>
-  <span class="legend"><b>blue</b> dependency &nbsp; <b>purple dashed</b> history (supersedes) &nbsp; <b>red</b> cycle &nbsp; select a node: <b>green</b> upstream chain, <b>red outline</b> blast radius (needs recheck)</span>
+  <span id="srcbadge">no file loaded</span>
   <span id="cycwarn"></span>
+  <span class="legend"><b>blue arrow</b> dependency &nbsp;<b>purple dashed</b> history (never in dependency closures) &nbsp;<b>red</b> cycle &nbsp;|&nbsp; status bar: <b style="color:var(--ok)">verified</b> <b style="color:var(--err)">rejected</b> <b style="color:var(--warn)">blocked</b> <b style="color:var(--unc)">unchecked</b> &nbsp;|&nbsp; click a node: <b style="color:var(--ok)">green</b> = upstream chain, <b style="color:var(--err)">red outline</b> = blast radius (needs recheck)</span>
 </header>
 <main>
-  <div id="canvaswrap"><svg id="svg" xmlns="http://www.w3.org/2000/svg"></svg></div>
-  <aside id="side"><p class="meta">Self-contained viewer: the file is parsed locally in this page; nothing is fetched or sent anywhere.</p></aside>
+  <div id="canvaswrap"><div id="zoom"><svg id="svg" xmlns="http://www.w3.org/2000/svg"></svg></div></div>
+  <aside id="side"><p class="meta">Self-contained viewer: the file is parsed locally in this page. Nothing is fetched or sent anywhere.</p></aside>
 </main>
 <script>
 "use strict";
 const COLS = [["definition"],["hypothesis"],["axiom"],["theorem"],["tombstone"]];
-const COLX = i => 60 + i*190, ROWY = r => 70 + r*74, W=150, H=44;
+const COLX = i => 50 + i*180, ROWY = r => 60 + r*80, W=150, H=48;
 let DATA=null, SEL=null;
 
 function load(text){
   const j = JSON.parse(text);
   if (j.spec !== "dagcheck-provenance/v1") throw new Error("not a dagcheck provenance/v1 file");
-  DATA=j; SEL=null; render();
+  DATA=j; SEL=null;
+  const src = j.generated_from || "?";
+  const badge = document.getElementById("srcbadge");
+  if (/fixture|demo|tests\//i.test(src)) {
+    badge.textContent = "DEMO / FIXTURE DATA - " + src + " (not a real user registry)";
+    badge.className = "demo";
+  } else {
+    badge.textContent = "generated from " + src + (j.today ? " - " + j.today : "");
+    badge.className = "";
+  }
+  render();
 }
 document.getElementById("file").addEventListener("change", e=>{
   const f=e.target.files[0]; if(!f) return;
@@ -76,10 +117,12 @@ function layout(nodes){
   return pos;
 }
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+function vclass(v){return v? "v-"+v : "";}
 
 function render(){
+  if(!DATA) return;
   const svg=document.getElementById("svg"), side=document.getElementById("side");
-  svg.innerHTML=""; 
+  svg.innerHTML="";
   const nodes=DATA.nodes||[], edges=DATA.edges||[];
   const pos=layout(nodes);
   const depCyc=new Set(DATA.cycles?.dependency||[]), supCyc=new Set(DATA.cycles?.supersedes||[]);
@@ -88,14 +131,27 @@ function render(){
     (supCyc.size?`history cycle: ${[...supCyc].join(", ")}`:"");
   const up=new Set(SEL?(DATA.upstream?.[SEL]||[]):[]);
   const blast=new Set(SEL?(DATA.blast_radius?.[SEL]||[]):[]);
-  const maxX=Math.max(0,...Object.values(pos).map(p=>p.x))+W+80;
-  const maxY=Math.max(0,...Object.values(pos).map(p=>p.y))+H+80;
-  svg.setAttribute("width",maxX); svg.setAttribute("height",maxY);
+  const w=Math.max(0,...Object.values(pos).map(p=>p.x))+W+70;
+  const h=Math.max(0,...Object.values(pos).map(p=>p.y))+H+60;
+  svg.setAttribute("width",w); svg.setAttribute("height",h);
+  // fit-to-width: the right column never slides under the sidebar; scroll only if still wider
+  const wrap=document.getElementById("canvaswrap");
+  const avail=wrap.clientWidth-36;
+  const scale=Math.min(1, avail/w);
+  document.getElementById("zoom").style.transform = scale<1 ? `scale(${scale})` : "";
   const NS="http://www.w3.org/2000/svg";
+  const defs=document.createElementNS(NS,"defs");
+  defs.innerHTML =
+    `<marker id="arrDep" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4c9aff"/></marker>`+
+    `<marker id="arrHist" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9e8cff"/></marker>`+
+    `<marker id="arrErr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#ff6b6b"/></marker>`;
+  svg.appendChild(defs);
   edges.forEach(e=>{
     const a=pos[e.from], b=pos[e.to]; if(!a||!b) return;
     const p=document.createElementNS(NS,"path");
-    const x1=a.x+W, y1=a.y+H/2, x2=b.x, y2=b.y+H/2;
+    const fwd = a.x <= b.x;
+    const x1 = fwd ? a.x+W : a.x, y1 = a.y+H/2;
+    const x2 = fwd ? b.x-3 : b.x+W+3, y2 = b.y+H/2;
     const mx=(x1+x2)/2;
     p.setAttribute("d",`M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`);
     p.setAttribute("class","edge"+(e.kind==="supersedes"?" hist":"")+
@@ -104,38 +160,60 @@ function render(){
   });
   nodes.forEach(n=>{
     const g=document.createElementNS(NS,"g");
-    let cls="node"+(SEL===n.id?" sel":"")+(blast.has(n.id)?" blast":"")+(up.has(n.id)?" up":"");
-    g.setAttribute("class",cls);
+    const retired = n.status==="deprecated";
+    g.setAttribute("class","node "+vclass(n.verdict)+(retired?" retired":"")+
+      (SEL===n.id?" sel":"")+(blast.has(n.id)?" blast":"")+(up.has(n.id)?" up":""));
     const r=document.createElementNS(NS,"rect");
     r.setAttribute("x",pos[n.id].x); r.setAttribute("y",pos[n.id].y);
-    r.setAttribute("width",W); r.setAttribute("height",H);
+    r.setAttribute("width",W); r.setAttribute("height",H); r.setAttribute("rx",6);
+    g.appendChild(r);
+    if(n.verdict){
+      const bar=document.createElementNS(NS,"rect");
+      bar.setAttribute("x",pos[n.id].x+1.5); bar.setAttribute("y",pos[n.id].y+1.5);
+      bar.setAttribute("width",4); bar.setAttribute("height",H-3); bar.setAttribute("class","bar");
+      g.appendChild(bar);
+    }
     const t1=document.createElementNS(NS,"text");
-    t1.setAttribute("x",pos[n.id].x+10); t1.setAttribute("y",pos[n.id].y+18);
+    t1.setAttribute("x",pos[n.id].x+11); t1.setAttribute("y",pos[n.id].y+18);
     t1.textContent=n.id+(n.status!=="active"?" ("+n.status+")":"");
     const t2=document.createElementNS(NS,"text");
-    t2.setAttribute("x",pos[n.id].x+10); t2.setAttribute("y",pos[n.id].y+35);
-    t2.setAttribute("fill","#8b96a3");
-    t2.textContent=(n.label||"").slice(0,22);
-    g.appendChild(r); g.appendChild(t1); g.appendChild(t2);
+    t2.setAttribute("x",pos[n.id].x+11); t2.setAttribute("y",pos[n.id].y+34);
+    t2.setAttribute("class","sub");
+    t2.textContent=(n.verdict? n.verdict : n.type)+(n.stale_now?" - stale":"");
+    const t3=document.createElementNS(NS,"text");
+    t3.setAttribute("x",pos[n.id].x+11); t3.setAttribute("y",pos[n.id].y+45);
+    t3.setAttribute("class","sub");
+    t3.textContent=(n.label||"").slice(0,24);
+    g.appendChild(t1); g.appendChild(t2); g.appendChild(t3);
     g.addEventListener("click",()=>{SEL=(SEL===n.id?null:n.id); render();});
     svg.appendChild(g);
   });
   const selNode=nodes.find(n=>n.id===SEL);
   const pill=id=>`<span class="pill" onclick="SEL=${JSON.stringify(id)};render()">${esc(id)}</span>`;
+  const vchip=v=>v?`<span class="vchip ${v}">${esc(v)}</span>`:"";
   side.innerHTML = selNode ? `
-    <h2>${esc(selNode.id)}</h2>
-    <div class="meta">${esc(selNode.type)} / ${esc(selNode.status)}<br>fingerprint ${esc(selNode.fingerprint)}</div>
-    <h3>Upstream chain (${up.size})</h3>
+    <h2>${esc(selNode.id)}${vchip(selNode.verdict)}${selNode.stale_now?'<span class="vchip stale">stale - needs recheck</span>':''}</h2>
+    <div class="meta">${esc(selNode.type)} / ${esc(selNode.status)}
+fingerprint ${esc(selNode.fingerprint)}</div>
+    <h3>Upstream chain - what this rests on (${up.size})</h3>
     <div>${[...up].map(pill).join("")||'<span class="meta">none</span>'}</div>
     <h3>Blast radius - needs recheck if this changes (${blast.size})</h3>
     <div>${[...blast].map(pill).join("")||'<span class="meta">nothing cites this</span>'}</div>
     <h3>Edges</h3>
     <div class="meta">${edges.filter(e=>e.from===SEL||e.to===SEL)
-        .map(e=>`${esc(e.from)} -[${esc(e.kind)}]-> ${esc(e.to)}`).join("<br>")||"none"}</div>`
+        .map(e=>`${esc(e.from)} -[${esc(e.kind)}]-> ${esc(e.to)}`).join("\n")||"none"}</div>`
   : `<h2>${nodes.length} entries, ${edges.length} edges</h2>
-     <p class="meta">generated from ${esc(DATA.generated_from||"?")}<br>today ${esc(DATA.today||"n/a")}</p>
-     <h3>Notes</h3><div class="meta">${(DATA.notes||[]).map(esc).join("<br><br>")}</div>`;
+     <p class="meta">generated from ${esc(DATA.generated_from||"?")}${DATA.today?"\nas of "+esc(DATA.today):""}</p>
+     <h3>Notes</h3><div class="meta">${(DATA.notes||[]).map(esc).join("\n\n")}</div>`;
 }
+window.addEventListener("resize", ()=>render());
+function applyMobileHash(){
+  if (location.hash.indexOf("mobile") >= 0)
+    document.querySelector("main").classList.add("force-mobile");
+}
+applyMobileHash();
+window.addEventListener("load", applyMobileHash);
+window.addEventListener("hashchange", applyMobileHash);
 </script>
 </body>
 </html>
