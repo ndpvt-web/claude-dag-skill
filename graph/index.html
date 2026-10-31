@@ -122,7 +122,12 @@ function load(text){
   DATA=j; SEL=null;
   const src = j.generated_from || "?";
   const badge = document.getElementById("srcbadge");
-  if (/fixture|demo|tests\//i.test(src)) {
+  // explicit demo banner: the demo delivery sets window.DAGCHECK_DEMO; path matching is
+  // only a fallback heuristic and never the primary signal
+  if (window.DAGCHECK_DEMO) {
+    badge.textContent = "DEMO / FIXTURE DATA - " + window.DAGCHECK_DEMO + " (not a real user registry)";
+    badge.className = "demo";
+  } else if (/fixture|demo|tests\//i.test(src)) {
     badge.textContent = "DEMO / FIXTURE DATA - " + src + " (not a real user registry)";
     badge.className = "demo";
   } else {
@@ -226,13 +231,31 @@ function render(){
     const t2=document.createElementNS(NS,"text");
     t2.setAttribute("x",pos[n.id].x+11); t2.setAttribute("y",pos[n.id].y+34);
     t2.setAttribute("class","sub");
-    t2.textContent=(n.upstream_stale==="true"||n.verdict==="upstream-stale"||n.freshness==="upstream-stale") ? "upstream-stale - needs recheck"
-      : (n.stale_now==="true"||n.verdict==="stale"||n.freshness==="stale") ? "stale - needs recheck"
+    // short status inside the box (long text overflows fixed node widths); the full
+    // phrase lives in the detail chip, the legend, and the hover tooltip
+    const st = (n.upstream_stale==="true"||n.verdict==="upstream-stale"||n.freshness==="upstream-stale") ? "upstream-stale"
+      : (n.stale_now==="true"||n.verdict==="stale"||n.freshness==="stale") ? "stale"
       : (n.verdict ? n.verdict : n.type);
+    t2.textContent = st;
+    if (st === "stale" || st === "upstream-stale") {
+      const tip = document.createElementNS(NS,"title");
+      tip.textContent = st + " - needs recheck (see detail panel)";
+      g.appendChild(tip);
+    }
     const t3=document.createElementNS(NS,"text");
     t3.setAttribute("x",pos[n.id].x+11); t3.setAttribute("y",pos[n.id].y+45);
     t3.setAttribute("class","sub");
     t3.textContent=(n.label||"").slice(0,24);
+    // hard clip: no node text (id, status, label) may paint outside its box
+    const cid = "clip-" + n.id.replace(/[^A-Za-z0-9_-]/g, "_");
+    const cp = document.createElementNS(NS,"clipPath"); cp.setAttribute("id", cid);
+    const cpr = document.createElementNS(NS,"rect");
+    cpr.setAttribute("x", pos[n.id].x+8); cpr.setAttribute("y", pos[n.id].y);
+    cpr.setAttribute("width", W-12); cpr.setAttribute("height", H);
+    cp.appendChild(cpr); g.appendChild(cp);
+    t1.setAttribute("clip-path", `url(#${cid})`);
+    t2.setAttribute("clip-path", `url(#${cid})`);
+    t3.setAttribute("clip-path", `url(#${cid})`);
     g.appendChild(t1); g.appendChild(t2); g.appendChild(t3);
     g.addEventListener("click",()=>{SEL=(SEL===n.id?null:n.id); render();});
     svg.appendChild(g);
