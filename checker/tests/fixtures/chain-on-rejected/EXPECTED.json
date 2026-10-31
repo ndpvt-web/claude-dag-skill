@@ -1,0 +1,7 @@
+{
+ "exit": 1,
+ "verdicts": {
+  "T1": "rejected",
+  "T2": "unchecked"
+ }
+}

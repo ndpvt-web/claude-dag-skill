@@ -1,0 +1,33 @@
+{
+ "A1": {
+  "id": "A1",
+  "type": "axiom",
+  "label": "a1",
+  "statement": "Statement of A1.",
+  "created": "2026-5-1",
+  "status": "active",
+  "rationale": "Founder decision.",
+  "form": {
+   "imp": [
+    {
+     "atom": "P"
+    },
+    {
+     "atom": "Q"
+    }
+   ]
+  }
+ },
+ "A2": {
+  "id": "A2",
+  "type": "axiom",
+  "label": "a2",
+  "statement": "Statement of A2.",
+  "created": "2026-05-01",
+  "status": "active",
+  "rationale": "Second.",
+  "form": {
+   "atom": "R"
+  }
+ }
+}

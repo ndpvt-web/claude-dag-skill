@@ -58,6 +58,42 @@ def loadDir (dir : String) (today? : Option Date) : IO (Registry × List Finding
     | none => (reg0.entries, [])
   return ({ reg0 with entries := es }, missFs ++ parseFs ++ staleFs)
 
+/-- Freshness drift: compare live content fingerprints against the committed provenance
+    baseline (<dir>/provenance.json). Drift NEVER claims invalidity; it names exactly which
+    entries changed and whose verification therefore needs recheck. -/
+def driftFindings (dir : String) (reg : Registry) : IO (List Finding) := do
+  let path := s!"{dir}/provenance.json"
+  if !(← System.FilePath.pathExists path) then
+    return [finfo "no-baseline" "no provenance.json baseline; run `dagcheck graph <dir> > <dir>/provenance.json` and commit it to enable freshness tracking"]
+  let content ← IO.FS.readFile path
+  match parseJsonStrict content with
+  | .error e => return [fwarn "bad-baseline" s!"provenance.json is not strict JSON ({e}); regenerate it with `dagcheck graph`"]
+  | .ok j =>
+    let nodes := match (j.getObjVal? "nodes").toOption with
+      | some (.arr arr) => arr.toList
+      | _ => []
+    let base : List (String × String) := nodes.filterMap (fun n =>
+      match (n.getObjVal? "id").toOption.bind (·.getStr?.toOption),
+            (n.getObjVal? "fingerprint").toOption.bind (·.getStr?.toOption) with
+      | some id, some fp => some (id, fp)
+      | _, _ => none)
+    let edges := registryEdges reg
+    let cur := reg.all.map (fun e => (e.id, entryFingerprint e))
+    let drifted := cur.filter (fun (id, fp) =>
+      match base.find? (fun b => b.1 == id) with
+      | some (_, bfp) => bfp != fp
+      | none => false)
+    let removed := base.filter (fun (id, _) => !(cur.any (fun c => c.1 == id)))
+    let newIds := cur.filter (fun (id, _) => !(base.any (fun b => b.1 == id)))
+    let driftFs := drifted.map (fun (id, _) =>
+      let blast := blastRadiusOf edges depKinds id
+      fwarn "stale-fingerprint" s!"{id}: content changed after the provenance baseline; {id} and its blast radius {blast} need recheck - drift says nothing about validity, only that prior verification no longer covers the new content")
+    let remFs := removed.map (fun (id, _) =>
+      fwarn "stale-fingerprint" s!"{id}: present in baseline but gone from the registry; entries that cited it need recheck")
+    let newFs := newIds.map (fun (id, _) =>
+      finfo "new-since-baseline" s!"{id}: not in the provenance baseline yet; regenerate provenance.json after review")
+    return driftFs ++ remFs ++ newFs
+
 /-- Decode a check-step --step object. -/
 def parseStepArg (s : String) : Except String (String × Form × String × List String) := do
   let j ← parseJsonStrict s
@@ -155,13 +191,14 @@ def main (args : List String) : IO UInt32 := do
       else
         let (reg, loadFs) ← loadDir dir today?
         if cmd == "check" then
-          IO.println (reportJson reg loadFs [] today? dir)
+          let driftFs ← driftFindings dir reg
+          IO.println (reportJson reg (loadFs ++ driftFs) [] today? dir)
           -- loadFs already includes parse/stale; count errors across full finding set
           let structural := globalChecks reg
           let atomFs := atomTableChecks reg
           let (_, consFs) := consistencyCheck reg 20
           let verdicts := verifyTheorems reg
-          let allFs := loadFs ++ structural ++ atomFs ++ consFs
+          let allFs := loadFs ++ driftFs ++ structural ++ atomFs ++ consFs
           let nErr := (allFs.filter (fun f => f.level == "error")).length
           let nBad := (verdicts.filter (fun v => v.verdict == "rejected" || v.verdict == "blocked")).length
           return if nErr + nBad > 0 then 1 else 0

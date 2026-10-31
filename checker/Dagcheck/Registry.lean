@@ -153,8 +153,33 @@ partial def parseEntry (ctx : String) (t : EntryType) (key : String) (j : Json) 
   let created ← match parseDate createdS with
     | some d => .ok d
     | none => .error s!"{ectx}: bad created date '{createdS}' (strict YYYY-MM-DD)"
+  -- strict schema: unknown fields are loud errors (a silently dropped field is how a
+  -- registry comes to believe something the file never said). To retire an entry, move
+  -- it to deprecated.json with superseded_by; active entries carry no such field.
+  let knownCommon := ["id", "type", "label", "statement", "created", "status", "form", "depends_on"]
+  let knownType : List String := match t with
+    | .axiom => ["rationale"]
+    | .hypothesis => ["falsification", "review_trigger", "staleness_period_days", "review_log"]
+    | .theorem => ["derived_from", "inference_rule", "derivation_note", "proof_confidence", "session_derived"]
+    | _ => []
+  let objKeys ← match j.getObj? with
+    | .ok ps => .ok (ps.toList.map Prod.fst)
+    | .error e => .error s!"{ectx}: entry must be an object: {e}"
+  let unknown := objKeys.filter (fun k => k ∉ knownCommon ++ knownType)
+  if !unknown.isEmpty then
+    throw s!"{ectx}: unknown field(s) {unknown}; not part of the {t.typeName} schema (to retire an entry, move it to deprecated.json with superseded_by)"
   let derivedFrom ← optStrList j "derived_from"
   let dependsOn ← optStrList j "depends_on"
+  -- session_derived, when present, must be a strict date
+  match (j.getObjVal? "session_derived").toOption with
+  | none => pure ()
+  | some v =>
+    match v.getStr? with
+    | .error e => throw s!"{ectx}: session_derived: {e}"
+    | .ok ds =>
+      match parseDate ds with
+      | some _ => pure ()
+      | none => throw s!"{ectx}: bad session_derived date '{ds}' (strict YYYY-MM-DD)"
   let inferenceRule := (j.getObjVal? "inference_rule").toOption.bind (·.getStr?.toOption)
   let proofConfidence := (j.getObjVal? "proof_confidence").toOption.bind (·.getStr?.toOption)
   let form ← match (j.getObjVal? "form").toOption with

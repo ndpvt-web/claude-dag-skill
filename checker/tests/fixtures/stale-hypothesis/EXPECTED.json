@@ -1,0 +1,17 @@
+{
+ "exit": 1,
+ "today": "2026-10-31",
+ "findings": [
+  [
+   "info",
+   "staleness"
+  ],
+  [
+   "error",
+   "citation"
+  ]
+ ],
+ "verdicts": {
+  "T1": "blocked"
+ }
+}

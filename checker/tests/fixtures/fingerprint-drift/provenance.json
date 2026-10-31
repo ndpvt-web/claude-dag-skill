@@ -1,0 +1,1 @@
+{"spec": "dagcheck-provenance/v1", "nodes": [{"id": "A1", "fingerprint": "000STALE000"}, {"id": "D1", "fingerprint": "x"}, {"id": "H1", "fingerprint": "x"}, {"id": "T1", "fingerprint": "x"}, {"id": "A9", "fingerprint": "x"}, {"id": "A2", "fingerprint": "x"}]}

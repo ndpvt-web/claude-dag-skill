@@ -1,4 +1,13 @@
 {
-  "D1": {"id":"D1","type":"definition","label":"onboarding","statement":"Onboarding is the first-session flow.",
-    "form":{"atom":"P"},"created":"2026-05-01","status":"active"}
+ "D1": {
+  "id": "D1",
+  "type": "definition",
+  "label": "d1",
+  "statement": "Statement of D1.",
+  "created": "2026-05-01",
+  "status": "active",
+  "form": {
+   "atom": "P"
+  }
+ }
 }

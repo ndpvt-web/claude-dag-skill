@@ -1,0 +1,9 @@
+{
+ "exit": 0,
+ "verdicts": {
+  "T1": "verified"
+ },
+ "absent_codes": [
+  "unmapped-atom"
+ ]
+}

@@ -1,0 +1,21 @@
+{
+ "exit": 0,
+ "graph": {
+  "upstream_not": {
+   "T1": [
+    "A9"
+   ]
+  },
+  "blast_not": {
+   "A9": [
+    "T1"
+   ]
+  },
+  "upstream": {
+   "T1": [
+    "A1",
+    "H1"
+   ]
+  }
+ }
+}

@@ -1,0 +1,9 @@
+{
+ "exit": 1,
+ "findings": [
+  [
+   "error",
+   "duplicate-id"
+  ]
+ ]
+}

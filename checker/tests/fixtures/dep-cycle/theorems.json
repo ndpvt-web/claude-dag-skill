@@ -1,0 +1,38 @@
+{
+ "T1": {
+  "id": "T1",
+  "type": "theorem",
+  "label": "t1",
+  "statement": "Statement of T1.",
+  "created": "2026-05-01",
+  "status": "active",
+  "derived_from": [
+   "T2"
+  ],
+  "inference_rule": "modus ponens",
+  "derivation_note": "A1: P->Q; H1: P; so Q.",
+  "proof_confidence": "CERTAIN",
+  "form": {
+   "atom": "Q"
+  },
+  "session_derived": "2026-05-17"
+ },
+ "T2": {
+  "id": "T2",
+  "type": "theorem",
+  "label": "t2",
+  "statement": "Statement of T2.",
+  "created": "2026-05-01",
+  "status": "active",
+  "derived_from": [
+   "T1"
+  ],
+  "inference_rule": "modus ponens",
+  "derivation_note": "x",
+  "proof_confidence": "CERTAIN",
+  "form": {
+   "atom": "Q"
+  },
+  "session_derived": "2026-05-18"
+ }
+}

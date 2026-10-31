@@ -1,0 +1,21 @@
+{
+ "exit": 0,
+ "verdicts": {
+  "T1": "verified"
+ },
+ "graph": {
+  "upstream": {
+   "T1": [
+    "A1",
+    "H1"
+   ]
+  },
+  "blast_radius": {
+   "A1": [
+    "T1"
+   ]
+  },
+  "dependency_cycles": [],
+  "supersedes_cycles": []
+ }
+}

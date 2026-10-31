@@ -1,0 +1,22 @@
+{
+ "H1": {
+  "id": "H1",
+  "type": "hypothesis",
+  "label": "h1",
+  "statement": "Statement of H1.",
+  "created": "2026-05-01",
+  "status": "active",
+  "falsification": "Churn persists after fixes.",
+  "review_trigger": "Monthly.",
+  "form": {
+   "atom": "P"
+  },
+  "staleness_period_days": 30,
+  "review_log": [
+   {
+    "date": "2026-10-01",
+    "note": "ok"
+   }
+  ]
+ }
+}

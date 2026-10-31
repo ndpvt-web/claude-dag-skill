@@ -1,0 +1,12 @@
+{
+ "exit": 1,
+ "findings": [
+  [
+   "error",
+   "supersession-cycle"
+  ]
+ ],
+ "absent_codes": [
+  "cycle"
+ ]
+}

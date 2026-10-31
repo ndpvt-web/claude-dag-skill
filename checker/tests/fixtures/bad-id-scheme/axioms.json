@@ -1,0 +1,23 @@
+{
+ "A2": {
+  "id": "A2",
+  "type": "axiom",
+  "label": "a2",
+  "statement": "Statement of A2.",
+  "created": "2026-05-01",
+  "status": "active",
+  "rationale": "Second.",
+  "form": {
+   "atom": "R"
+  }
+ },
+ "X1": {
+  "id": "X1",
+  "type": "axiom",
+  "label": "x1",
+  "statement": "Statement of X1.",
+  "created": "2026-05-01",
+  "status": "active",
+  "rationale": "r"
+ }
+}

@@ -1,0 +1,12 @@
+{
+ "exit": 1,
+ "findings": [
+  [
+   "error",
+   "confidence"
+  ]
+ ],
+ "verdicts": {
+  "T1": "unchecked"
+ }
+}

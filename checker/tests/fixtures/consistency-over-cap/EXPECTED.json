@@ -1,0 +1,12 @@
+{
+ "exit": 0,
+ "findings": [
+  [
+   "warning",
+   "consistency-over-cap"
+  ]
+ ],
+ "absent_codes": [
+  "consistency"
+ ]
+}

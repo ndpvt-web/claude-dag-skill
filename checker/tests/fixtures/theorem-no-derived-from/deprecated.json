@@ -1,0 +1,10 @@
+{
+ "A9": {
+  "id": "A9",
+  "type": "axiom",
+  "original_statement": "Old belief.",
+  "deprecated_on": "2026-06-01",
+  "reason": "Contradicted.",
+  "superseded_by": "A1"
+ }
+}
