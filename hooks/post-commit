@@ -1,6 +1,9 @@
 #!/bin/sh
 # DAG registry post-commit report. READ-ONLY and REPORT-ONLY.
 #
+# WHAT IS REPORTED: the content that just landed (HEAD), extracted into a temp
+# snapshot - not whatever the working tree happens to hold now.
+#
 # A post-commit hook runs after the commit has landed: it cannot block anything,
 # so its only honest job is to report. It NEVER regenerates provenance.json.
 # Re-baselining on every commit would bless whatever just landed (including edits
@@ -13,15 +16,13 @@
 # Always --out (atomic temp+rename). Never shell `>` onto the live baseline: the
 # shell truncates the target before dagcheck even starts.
 #
-# Exit code is always 0 (unless git itself is broken); failures to run the checker
-# are reported, never enforced.
+# Exit code is always 0; an unexpected checker exit produces a LOUD warning,
+# never a silent pass.
 
 set -u
 
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
-REG="$ROOT/.dag/registry"
-[ -d "$REG" ] || exit 0
-[ -f "$REG/provenance.json" ] || exit 0
+git ls-tree -r --name-only HEAD -- '.dag/registry/' 2>/dev/null | grep -q . || exit 0
 
 BIN="${DAGCHECK_BIN:-}"
 if [ -z "$BIN" ] || [ ! -x "$BIN" ]; then
@@ -38,9 +39,23 @@ if [ -z "$BIN" ]; then
   exit 0
 fi
 
+SNAP=$(mktemp -d) || exit 0
+trap 'rm -rf "$SNAP"' EXIT
+# (newline-delimited: registry filenames are scheme-controlled, and dash has no read -d)
+git ls-tree -r --name-only HEAD -- '.dag/registry/' | while IFS= read -r f; do
+  mkdir -p "$SNAP/$(dirname "$f")"
+  git cat-file -p "HEAD:$f" > "$SNAP/$f" 2>/dev/null || true
+done
+[ -f "$SNAP/.dag/registry/provenance.json" ] || { rm -rf "$SNAP"; trap - EXIT; exit 0; }
+
 TODAY=$(date +%F)
 OUT=$(mktemp) || exit 0
-"$BIN" check "$REG" --today "$TODAY" >"$OUT" 2>/dev/null
+"$BIN" check "$SNAP/.dag/registry" --today "$TODAY" >"$OUT" 2>/dev/null
+RC=$?
+
+if [ "$RC" -ne 0 ] && [ "$RC" -ne 1 ] && [ "$RC" -ne 2 ]; then
+  echo "dagcheck post-commit: WARNING - checker exited $RC (unexpected); no drift report could be produced." >&2
+fi
 
 if grep -q '"code":"stale-fingerprint"' "$OUT" 2>/dev/null; then
   echo "dagcheck post-commit: content drift detected against the committed baseline:" >&2

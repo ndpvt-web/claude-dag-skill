@@ -214,6 +214,17 @@ for name in sorted(os.listdir(FX)):
                         errs.append(f"{tag}: malformed relationship line: {l!r}")
             if xp.get("comment_contains") and xp["comment_contains"] not in out and xp["comment_contains"] not in xr1.stderr:
                 errs.append(f"{tag}: missing comment {xp['comment_contains']!r}")
+            for want in xp.get("stderr_contains", []):
+                if want not in xr1.stderr:
+                    errs.append(f"{tag}: stderr missing {want!r}: {xr1.stderr[:200]}")
+            if xp.get("out_refused"):
+                import tempfile
+                op = os.path.join(tempfile.mkdtemp(prefix="dagcheck-outrefused-"), "out.xml")
+                xr3 = run(cmd + ["--out", op])
+                if xr3.returncode != xp["exit"]:
+                    errs.append(f"{tag} --out: exit {xr3.returncode} != {xp['exit']}")
+                if os.path.exists(op):
+                    errs.append(f"{tag} --out: REFUSED export still wrote {op}")
     status = "PASS" if not errs else "FAIL"
     print(f"{status} {name}")
     for e in errs:

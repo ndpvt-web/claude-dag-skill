@@ -535,4 +535,17 @@ make("export-hostile", _hostile,
         {"format": "cypher", "exit": 0, "node_count": 6, "edge_count": 3},
         {"format": "yaml", "exit": 2}]})
 
+# 45. XML/Cypher-unsafe codepoints: a control character XML 1.0 cannot represent must
+#     make export REFUSE LOUDLY (exit 2, entry + codepoint named, no artifact), never
+#     silently corrupt the value
+def _ctrl(f):
+    f["theorems.json"]["T1"]["label"] = "bad\u0001label"
+make("export-control-char", _ctrl,
+     {"exit": 0, "verdicts": {"T1": "verified"},
+      "export": [
+        {"format": "graphml", "exit": 2, "stderr_contains": ["T1", "U+0001", "Refusing"],
+         "out_refused": True},
+        {"format": "cypher", "exit": 2, "stderr_contains": ["T1", "U+0001"],
+         "out_refused": True}]})
+
 print("fixtures generated in", ROOT)

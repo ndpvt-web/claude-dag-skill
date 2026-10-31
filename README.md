@@ -74,7 +74,7 @@ Open `graph/index.html` in any browser and load that `provenance.json` to explor
 
 ## Running the tests
 
-The checker ships with a test suite under `checker/tests/`: 50 fixture registries (each with an `EXPECTED.json` of the results the checker must produce) plus a label-edit check confirming that renaming a fact's label never marks it as changed (IDs are permanent). After `lake build`:
+The checker ships with a test suite under `checker/tests/`: 51 fixture registries (each with an `EXPECTED.json` of the results the checker must produce) plus a label-edit check confirming that renaming a fact's label never marks it as changed (IDs are permanent). After `lake build`:
 
 ```
 python3 checker/tests/run_fixtures.py      # fixture registries + exports + coverage
@@ -97,8 +97,12 @@ One command:
 That copies the skill into `~/.claude/skills/DAG/` and builds the Lean checker
 (installing the toolchain if needed). `./install.sh --skip-lean` installs just the
 skill - every `/dag` workflow works, and you can build the checker later with
-`cd checker && lake build`. Re-running the installer is safe: it backs up an
-existing install before overwriting and never touches any `.dag` directory.
+`cd checker && lake build`. Re-running the installer over an identical install
+is a no-op refresh. If the existing install DIFFERS from the source tree, the
+installer REFUSES by default (nothing changes, no backup is made) - an unexpected
+difference deserves a human look first. Re-run with `--overwrite` to replace it;
+that copies the old install to `<prefix>.backup-<timestamp>` first and never
+auto-cleans backups. Either way it never touches any `.dag` directory.
 
 Or do it by hand:
 
@@ -110,14 +114,20 @@ Or do it by hand:
 
 `hooks/` ships a pre-commit and a post-commit hook for projects that use a registry:
 
-- **pre-commit** runs `dagcheck check` (read-only, with `--today`) when registry
-  files are staged. Errors and rejected/blocked verdicts block the commit; warnings
-  such as content drift are reported and the commit proceeds.
-- **post-commit** reports drift against the committed baseline. It can only report -
-  the commit has already landed - and it NEVER regenerates `provenance.json`.
-  Re-baselining on every commit would silently bless whatever landed, including
-  edits that bypassed review. After you review and accept a change, re-baseline
-  explicitly: `dagcheck graph .dag/registry --out .dag/registry/provenance.json`.
+- **pre-commit** validates the STAGED snapshot of the registry (extracted via
+  `git cat-file`, never the working tree), so a broken staged file cannot hide
+  behind an unstaged fix - and a good staged file is not blocked by a broken
+  unstaged one. It runs `dagcheck check` (read-only, with `--today`). Exit 0
+  with parseable output passes; exit 1 or 2 blocks the commit; ANY other exit
+  code, or output the hook cannot parse, produces a loud NOT-validated warning
+  and the commit proceeds (fail-open, but never silently).
+- **post-commit** reports drift in the just-committed (HEAD) registry content
+  against the committed baseline, with the same loud-warning policy for
+  unexpected checker exits. It can only report - the commit has already
+  landed - and it NEVER regenerates `provenance.json`. Re-baselining on every
+  commit would silently bless whatever landed, including edits that bypassed
+  review. After you review and accept a change, re-baseline explicitly:
+  `dagcheck graph .dag/registry --out .dag/registry/provenance.json`.
 
 Install them into a project: `cp hooks/pre-commit hooks/post-commit <project>/.git/hooks/`
 
@@ -130,7 +140,10 @@ from the live type files (never the baseline), tombstones are excluded from acti
 denominators, and drifted theorems count as stale - never as verified.
 
 `dagcheck export` serializes the provenance graph for other tools, read-only and
-deterministic:
+deterministic. A value the target format cannot represent (e.g. a control
+character that XML 1.0 forbids even as a character reference) makes the export
+REFUSE loudly, naming the entry and codepoint - never a silent substitution
+(fixture export-control-char):
 
 ```
 dagcheck export path/to/.dag/registry --format graphml [--out graph.graphml]

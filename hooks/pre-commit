@@ -2,22 +2,30 @@
 # DAG registry pre-commit check. READ-ONLY: this hook never writes, renames or
 # deletes any registry file, and never regenerates provenance.json.
 #
-# Semantics (explicit):
-#   - Runs only when .dag/registry/*.json files are staged in this commit.
-#   - dagcheck check exits 1 on error-severity findings or rejected/blocked
-#     verdicts; the hook then BLOCKS the commit (that is what pre-commit is for).
-#   - Warning-level findings (including stale-fingerprint drift) are REPORTED and
-#     the commit proceeds: drift means "needs recheck", not "invalid", and the fix
-#     is review plus an explicit, human-accepted baseline regeneration - never a hook.
-#   - If no dagcheck binary is available, the hook prints a notice and allows the
-#     commit (a missing checker must not disable git); set DAGCHECK_BIN to enable.
+# WHAT IS CHECKED: the STAGED snapshot, not the working tree. Registry files are
+# extracted from the git index (git cat-file :path) into a temp dir and dagcheck
+# runs there, so what is validated is exactly what the commit would contain -
+# an unstaged fix cannot launder a staged breakage, and a staged deletion of a
+# required file fails loudly.
+#
+# Exit semantics (explicit):
+#   - dagcheck exit 0 with a parseable report -> commit proceeds. Warning-level
+#     findings (including stale-fingerprint drift) are REPORTED only: drift means
+#     "needs recheck", not "invalid", and the fix is review plus an explicit,
+#     human-accepted baseline regeneration - never a hook.
+#   - dagcheck exit 1 (error findings or rejected/blocked verdicts) -> BLOCK.
+#   - dagcheck exit 2 (usage refusal, e.g. empty registry) -> BLOCK: the registry
+#     is not in a checkable state and that is never fine to commit blindly.
+#   - ANY OTHER exit code, or exit 0 with unparseable output (crash, truncated
+#     binary, OOM kill) -> LOUD WARNING, commit proceeds (fail-open policy: a
+#     broken checker must not disable git, but the user MUST see it happened).
+#   - No dagcheck binary -> skip notice, commit proceeds (set DAGCHECK_BIN).
 #   - Emergency bypass: git commit --no-verify (an explicit human act, logged by git).
 
 set -u
 
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
-REG="$ROOT/.dag/registry"
-[ -d "$REG" ] || exit 0
+[ -d "$ROOT/.dag/registry" ] || exit 0
 
 if ! git diff --cached --name-only | grep -q '^\.dag/registry/.*\.json$'; then
   exit 0
@@ -39,24 +47,41 @@ if [ -z "$BIN" ]; then
   exit 0
 fi
 
+SNAP=$(mktemp -d) || exit 1
+trap 'rm -rf "$SNAP"' EXIT
+# staged snapshot: every index-tracked registry file, exactly as staged
+# (newline-delimited: registry filenames are scheme-controlled, and dash has no read -d)
+git ls-files -- '.dag/registry/' | while IFS= read -r f; do
+  mkdir -p "$SNAP/$(dirname "$f")"
+  git cat-file -p ":$f" > "$SNAP/$f" 2>/dev/null || true
+done
+
 TODAY=$(date +%F)
 OUT=$(mktemp) || exit 1
-"$BIN" check "$REG" --today "$TODAY" >"$OUT" 2>/dev/null
+"$BIN" check "$SNAP/.dag/registry" --today "$TODAY" >"$OUT" 2>/dev/null
 RC=$?
 
-if [ "$RC" -eq 1 ]; then
-  echo "dagcheck pre-commit: registry check FAILED (error findings or rejected/blocked verdicts):" >&2
+if [ "$RC" -eq 1 ] || [ "$RC" -eq 2 ]; then
+  echo "dagcheck pre-commit: registry check FAILED (exit $RC; error findings, rejected/blocked verdicts, or uncheckable registry):" >&2
   grep -o '"level":"error","code":"[^"]*","detail":"[^"]*"' "$OUT" >&2
   grep -o '"id":"[^"]*","verdict":"rejected"[^}]*}' "$OUT" >&2
   grep -o '"id":"[^"]*","verdict":"blocked"[^}]*}' "$OUT" >&2
-  echo "dagcheck: commit blocked. Fix the registry, or bypass explicitly with git commit --no-verify." >&2
+  echo "dagcheck: commit blocked. Fix the STAGED registry content, or bypass explicitly with git commit --no-verify." >&2
   rm -f "$OUT"
   exit 1
 fi
 
+if [ "$RC" -ne 0 ] || ! grep -q '"report":"dagcheck/v1"' "$OUT" 2>/dev/null; then
+  echo "dagcheck pre-commit: WARNING - checker did not produce a clean report (exit $RC, unexpected)." >&2
+  echo "dagcheck: the registry was NOT validated, but the commit proceeds under the fail-open" >&2
+  echo "dagcheck: policy (a broken checker must not disable git). Investigate the binary." >&2
+  rm -f "$OUT"
+  exit 0
+fi
+
 if grep -q '"level":"warning"' "$OUT" 2>/dev/null; then
   echo "dagcheck pre-commit: check passed with warnings (commit proceeds):" >&2
-  grep -o '"code":"[^"]*","detail":"[^"]*"' "$OUT" | grep -v '^\(,"detail"\)' >&2
+  grep -o '"code":"[^"]*","detail":"[^"]*"' "$OUT" >&2
   echo "dagcheck: warnings are reports, not blocks. Drift is resolved by review + explicit" >&2
   echo "  dagcheck graph .dag/registry --out .dag/registry/provenance.json" >&2
   echo "  after you accept the change - never by a hook." >&2

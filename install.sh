@@ -1,7 +1,7 @@
 #!/bin/sh
 # One-command installer for the DAG skill for Claude Code.
 #
-#   ./install.sh [--prefix DIR] [--skip-lean]
+#   ./install.sh [--prefix DIR] [--skip-lean] [--overwrite]
 #
 # Defaults: prefix ~/.claude/skills/DAG, and the Lean checker is built (installing
 # the elan toolchain if needed). --skip-lean installs the skill without the
@@ -9,8 +9,13 @@
 # until you build checker/ yourself (lake build).
 #
 # Safety contract:
-#   - Idempotent: re-running refreshes the same files. Before the first overwrite
-#     in a run, any pre-existing install is copied to <prefix>.backup-<timestamp>.
+#   - Idempotent: re-running over an IDENTICAL install just refreshes the same
+#     files. If the existing install DIFFERS from this source tree, the default
+#     is to REFUSE (nothing is changed, no backup is made): an unexpected
+#     difference means a human should look before anything is replaced.
+#     --overwrite opts in to replacement: the existing install is first copied
+#     to <prefix>.backup-<timestamp>, then refreshed. Backups are never
+#     auto-cleaned.
 #   - It NEVER deletes files outside the copy set, and NEVER touches any .dag
 #     directory anywhere (project registries are user data, not skill files).
 #   - A failed Lean build leaves the skill installed and says so; it does not
@@ -20,11 +25,13 @@ set -u
 
 PREFIX="$HOME/.claude/skills/DAG"
 SKIP_LEAN=0
+OVERWRITE=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --prefix) PREFIX="$2"; shift 2 ;;
     --skip-lean) SKIP_LEAN=1; shift ;;
-    *) echo "usage: $0 [--prefix DIR] [--skip-lean]" >&2; exit 2 ;;
+    --overwrite) OVERWRITE=1; shift ;;
+    *) echo "usage: $0 [--prefix DIR] [--skip-lean] [--overwrite]" >&2; exit 2 ;;
   esac
 done
 
@@ -55,6 +62,12 @@ if [ -d "$PREFIX" ]; then
     fi
   done
   if [ "$DIFFERS" = "1" ]; then
+    if [ "$OVERWRITE" != "1" ]; then
+      echo "install.sh: REFUSING to install: $PREFIX exists and differs from this source tree." >&2
+      echo "install.sh: nothing was changed and no backup was made. Inspect the difference;" >&2
+      echo "install.sh: to replace it, re-run with --overwrite (the old install is backed up first)." >&2
+      exit 2
+    fi
     TS=$(date +%Y%m%d-%H%M%S)-$$
     BACKUP="$PREFIX.backup-$TS"
     cp -R "$PREFIX" "$BACKUP"

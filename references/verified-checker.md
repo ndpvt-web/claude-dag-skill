@@ -43,7 +43,13 @@ order), and fails closed on an empty registry (exit 2, no artifact), same as
 (from cites/depends/supersedes to); supersedes stays a labeled history edge.
 Strings are escaped for the target format (fixture export-hostile roundtrips a
 hostile label through both); exit is 1 when the registry has error-level findings,
-so a broken registry never produces a silently green export.
+so a broken registry never produces a silently green export. A value the target
+format cannot represent at all is refused, not corrupted: GraphML rejects any
+codepoint XML 1.0 forbids outright (C0 controls other than tab/LF/CR, plus
+U+FFFE/U+FFFF - even numeric character references for these are illegal), and
+Cypher rejects C0 controls other than tab/LF/CR. The refusal exits 2, names the
+entry and the offending codepoint (e.g. U+0001), and writes no artifact (fixture
+export-control-char).
 
 ## What "verified" means (and what it does not)
 

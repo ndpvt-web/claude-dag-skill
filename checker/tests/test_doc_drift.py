@@ -41,22 +41,42 @@ LEAN_ALL = "\n".join(read(os.path.join("checker/Dagcheck", f))
                      for f in sorted(os.listdir(os.path.join(ROOT, "checker/Dagcheck")))
                      if f.endswith(".lean")) + MAIN
 
-# 1. Every documented dagcheck subcommand is implemented in the CLI dispatch.
-doc_cmds = set()
-for doc in (README, VC):
-    doc_cmds |= set(re.findall(r"dagcheck\s+(check-step|check|graph|export)\b", doc))
-dispatch = re.search(r'cmd != "check"[^\\n]*', MAIN)
+# 1+2. Commands and flags are cross-checked BIDIRECTIONALLY between the docs and
+# the CLI: docs may not name anything the code lacks (fictional flags fail), and
+# the code may not keep anything the docs dropped (deleting a feature's docs
+# fails instead of silently narrowing the checked set). Flags are extracted
+# generically from `dagcheck <cmd> ...` usage lines - never a whitelist.
+CMD_RE = r"(check-step|check|graph|export)"
+def doc_usage(texts):
+    """(commands, {cmd: flags}) parsed from actual dagcheck usage lines in the
+    given doc texts, with shell line continuations joined first."""
+    cmds, flags = set(), {}
+    for t in texts:
+        joined = re.sub(r"\\\n", " ", t)
+        for line in joined.splitlines():
+            m = re.search(r"\bdagcheck\s+" + CMD_RE + r"\b(.*)", line)
+            if m:
+                cmds.add(m.group(1))
+                flags.setdefault(m.group(1), set()).update(
+                    re.findall(r"(?<![\w-])--[a-z][a-z0-9-]*", m.group(2)))
+    return cmds, flags
+doc_cmds, doc_flag_map = doc_usage([README, VC])
 dispatched = set(re.findall(r'cmd\s*!=\s*"([a-z-]+)"', MAIN))
 check("documented-commands-implemented",
       doc_cmds <= dispatched and doc_cmds != set(),
       f"docs name {sorted(doc_cmds)}, dispatch has {sorted(dispatched)}")
+check("implemented-commands-documented",
+      dispatched <= doc_cmds,
+      f"dispatch has {sorted(dispatched)}, docs cover {sorted(doc_cmds)}")
 
-# 2. Every documented flag is consumed by the CLI (stripFlags or getFlag).
-doc_flags = set(re.findall(r"--(?:today|cap|out|premises|step|format)\b", README + VC))
+doc_flags = set().union(*doc_flag_map.values()) if doc_flag_map else set()
 consumed = set(re.findall(r'"(--[a-z]+)"', MAIN))
 check("documented-flags-consumed",
       doc_flags <= consumed,
       f"docs name {sorted(doc_flags)}, Main.lean consumes {sorted(consumed)}")
+check("consumed-flags-documented",
+      consumed <= doc_flags,
+      f"Main.lean consumes {sorted(consumed)}, docs cover {sorted(doc_flags)}")
 
 # 3. Verdict vocabulary documented in verified-checker.md exists in the Lean sources.
 verdict_words = set(re.findall(r"\*\*(verified|rejected|blocked|unchecked|stale|upstream-stale)(?:\s*/|\*\*)", VC))
@@ -140,11 +160,15 @@ writes = re.findall(r"IO\.FS\.(writeFile|rename)", MAIN)
 # A hook may PRINT the manual re-baseline command for a human to run; it must never
 # EXECUTE it. Distinguish invocation lines from echo/comment lines.
 def hook_executes_graph(s):
+    """True if s runs the graph subcommand on an executable line. Permissive
+    about quoting ($BIN graph, "$BIN" graph, dagcheck graph) so a quoting
+    variant cannot slip a baseline rewrite past this test; echo/printf/comment
+    lines are messages to a human, not invocations."""
     for line in s.splitlines():
         t = line.strip()
-        if t.startswith("#") or t.startswith("echo ") or t.startswith('echo"'):
+        if t.startswith("#") or t.startswith("echo ") or t.startswith('echo"') or t.startswith("printf "):
             continue
-        if re.search(r'("^\$BIN"|\$BIN|dagcheck)\s+graph\b', t):
+        if re.search(r'"?(?:\$BIN|dagcheck)"?\s+graph\b', t):
             return True
     return False
 check("hooks-never-regenerate-baseline",
@@ -170,6 +194,39 @@ if _sh.which("node"):
           probe.stderr.strip()[:200])
 else:
     print("SKIP viewer-script-parses (node not available)")
+
+# 12. Mutation battery: the cross-checks must actually FAIL when their invariant
+#     is violated in-memory. A check that passes on mutated input is vacuous.
+def expect_broken(name, invariant_holds, detail):
+    check(f"mutation-{name}", not invariant_holds, detail)
+
+# 12a. A fictional flag in the docs must fail documented-flags-consumed.
+vc_frob = re.sub(r"(dagcheck check <registry-dir>[^\n]*\[--cap N\])",
+                 r"\1 --frob", VC, count=1)
+assert vc_frob != VC, "frob mutation anchor missing"
+_, frob_flags = doc_usage([vc_frob])
+frob_all = set().union(*frob_flags.values())
+expect_broken("fictional-flag-fails", frob_all <= consumed,
+              "fictional --frob in docs was not flagged")
+
+# 12b. Deleting a command's docs must fail implemented-commands-documented.
+no_export_vc = "\n".join(l for l in VC.splitlines() if "dagcheck export" not in l)
+no_export_rd = "\n".join(l for l in README.splitlines() if "dagcheck export" not in l)
+no_export_cmds, _ = doc_usage([no_export_rd, no_export_vc])
+expect_broken("deleted-export-docs-fail", dispatched <= no_export_cmds,
+              "deleting export docs silently narrowed the checked set")
+
+# 12c. The judge's quoting-variant attack on the hook must be caught, while the
+#      legitimate human-facing re-baseline instructions stay allowed.
+attack = hook_pre + '\n"$BIN" graph "$REG" --out "$REG/provenance.json"\n'
+expect_broken("quoted-graph-invocation-caught", not hook_executes_graph(attack),
+              "'\"$BIN\" graph' invocation bypassed hook_executes_graph")
+attack2 = hook_pre + "\ndagcheck graph .dag/registry --out .dag/registry/provenance.json\n"
+expect_broken("bare-dagcheck-graph-caught", not hook_executes_graph(attack2),
+              "bare 'dagcheck graph' invocation bypassed hook_executes_graph")
+echo_line = hook_pre + '\necho "  dagcheck graph .dag/registry --out .dag/registry/provenance.json"\n'
+check("mutation-manual-rebaseline-echo-allowed", not hook_executes_graph(echo_line),
+      "a human-facing echo of the re-baseline command was misclassified as an invocation")
 
 print()
 for n, e in failures:

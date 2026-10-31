@@ -22,10 +22,17 @@ sh "$ROOT/install.sh" --prefix "$PREFIX" --skip-lean >/dev/null
 ok "second-install-succeeds" "$?"
 ls -d "$PREFIX".backup-* >/dev/null 2>&1 && { echo "FAIL idempotent-no-backup"; FAIL=1; } || echo "PASS idempotent-no-backup"
 
-# modified target -> backup with OLD content before overwrite
+# modified target -> REFUSED by default: nonzero exit, nothing changed, no backup
 echo "local-edit" >> "$PREFIX/README.md"
-sh "$ROOT/install.sh" --prefix "$PREFIX" --skip-lean >/dev/null
-ok "third-install-succeeds" "$?"
+sh "$ROOT/install.sh" --prefix "$PREFIX" --skip-lean >/dev/null 2>&1
+[ "$?" != "0" ] && echo "PASS differing-install-refused" || { echo "FAIL differing-install-refused"; FAIL=1; }
+grep -q "local-edit" "$PREFIX/README.md" && echo "PASS refused-install-left-target-alone" || { echo "FAIL refused-install-left-target-alone"; FAIL=1; }
+ls -d "$PREFIX".backup-* >/dev/null 2>&1 && { echo "FAIL refusal-made-no-backup"; FAIL=1; } || echo "PASS refusal-made-no-backup"
+sh "$ROOT/install.sh" --prefix "$PREFIX" --skip-lean 2>&1 | grep -q -- "--overwrite"   && echo "PASS refusal-message-names-overwrite" || { echo "FAIL refusal-message-names-overwrite"; FAIL=1; }
+
+# explicit --overwrite -> backup with OLD content, then target refreshed
+sh "$ROOT/install.sh" --prefix "$PREFIX" --skip-lean --overwrite >/dev/null
+ok "overwrite-install-succeeds" "$?"
 B=$(ls -d "$PREFIX".backup-* 2>/dev/null | head -1)
 [ -n "$B" ] && grep -q "local-edit" "$B/README.md" && echo "PASS backup-preserves-old-content" || { echo "FAIL backup-preserves-old-content"; FAIL=1; }
 grep -q "local-edit" "$PREFIX/README.md" && { echo "FAIL target-refreshed"; FAIL=1; } || echo "PASS target-refreshed"

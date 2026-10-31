@@ -272,7 +272,9 @@ def main (args : List String) : IO UInt32 := do
           if reg.entries.isEmpty && reg.tombstones.isEmpty then
             IO.eprintln s!"no registry entries loaded from {dir} (missing or empty registry); refusing to emit an export artifact"
             return 2
-          let artifact := exportRun fmt reg dir
+          let artifact ← match exportRun fmt reg dir with
+            | .error e => IO.eprintln s!"export refused: {e}"; return 2
+            | .ok a => pure a
           match getFlag rest "--out" with
           | some outPath =>
             let tmp := outPath ++ ".tmp"

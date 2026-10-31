@@ -116,6 +116,63 @@ r = sh("git add x.txt && git commit -qm plain; echo RC=$?", d, env)
 check("no-registry-is-noop", "RC=0" in r.stdout and r.stderr == "", r.stderr[:200])
 shutil.rmtree(d, ignore_errors=True)
 
+# --- scenario 6: staged snapshot, not working tree -----------------------------
+# staged BROKEN + unstaged FIX must BLOCK (the commit would contain the breakage)
+d = make_repo()
+sh("git add .dag && git commit -qm init", d, env)
+reg = os.path.join(d, ".dag", "registry")
+th = os.path.join(reg, "theorems.json")
+good = open(th).read()
+data = json.load(open(th)); data["T1"]["form"] = {"atom": "R"}
+json.dump(data, open(th, "w"), indent=1)
+sh("git add .dag", d, env)                       # stage the breakage
+open(th, "w").write(good)                        # fix working tree, do NOT stage
+r = sh("git commit -qm staged-broken > /tmp/o 2>&1; echo RC=$?; cat /tmp/o", d, env)
+check("staged-broken-unstaged-fix-blocks", "RC=1" in r.stdout, r.stdout + r.stderr)
+shutil.rmtree(d, ignore_errors=True)
+
+# staged GOOD + unstaged BREAKAGE must PASS (validates what the commit contains)
+d = make_repo()
+sh("git add .dag && git commit -qm init", d, env)
+reg = os.path.join(d, ".dag", "registry")
+th = os.path.join(reg, "theorems.json")
+good = open(th).read()
+data = json.load(open(th)); data["T1"]["statement"] = "Staged statement change."
+json.dump(data, open(th, "w"), indent=1)
+sh("git add .dag", d, env)                       # stage a valid change
+data = json.load(open(th)); data["T1"]["form"] = {"atom": "R"}   # unstaged breakage
+json.dump(data, open(th, "w"), indent=1)
+r = sh("git commit -qm staged-good > /tmp/o 2>&1; echo RC=$?; cat /tmp/o", d, env)
+check("staged-good-unstaged-broken-passes", "RC=0" in r.stdout, r.stdout + r.stderr)
+shutil.rmtree(d, ignore_errors=True)
+
+# --- scenario 7: unexpected checker behavior is LOUD, never a silent pass --------
+d = make_repo()
+fake = os.path.join(d, "fake-dagcheck.sh")
+open(fake, "w").write("#!/bin/sh\nexit 42\n")
+os.chmod(fake, 0o755)
+r = sh("git add .dag && git commit -qm init > /tmp/o 2>&1; echo RC=$?; cat /tmp/o", d,
+       {"DAGCHECK_BIN": fake, "PATH": "/usr/bin:/bin", "HOME": d})
+check("rc42-allowed-but-loud", "RC=0" in r.stdout and "WARNING" in (r.stdout + r.stderr)
+      and "NOT validated" in (r.stdout + r.stderr), (r.stdout + r.stderr)[:300])
+open(fake, "w").write("#!/bin/sh\necho garbage-not-json\nexit 0\n")
+r = sh("git add .dag && git commit -qm second --allow-empty > /tmp/o 2>&1; echo RC=$?; cat /tmp/o", d,
+       {"DAGCHECK_BIN": fake, "PATH": "/usr/bin:/bin", "HOME": d})
+# --allow-empty has no staged registry changes: hook does not run at all
+check("empty-commit-no-hook-run", "RC=0" in r.stdout and "WARNING" not in (r.stdout + r.stderr))
+open(os.path.join(d, ".dag", "registry", "axioms.json"), "a").write(" ")
+r = sh("git add .dag && git commit -qm touch > /tmp/o 2>&1; echo RC=$?; cat /tmp/o", d,
+       {"DAGCHECK_BIN": fake, "PATH": "/usr/bin:/bin", "HOME": d})
+check("garbage-output-loud", "RC=0" in r.stdout and "NOT validated" in (r.stdout + r.stderr),
+      (r.stdout + r.stderr)[:300])
+open(fake, "w").write("#!/bin/sh\nexit 2\n")
+open(os.path.join(d, ".dag", "registry", "axioms.json"), "a").write(" ")
+r = sh("git add .dag && git commit -qm refused > /tmp/o 2>&1; echo RC=$?; cat /tmp/o", d,
+       {"DAGCHECK_BIN": fake, "PATH": "/usr/bin:/bin", "HOME": d})
+check("rc2-blocks", "RC=1" in r.stdout and "blocked" in (r.stdout + r.stderr),
+      (r.stdout + r.stderr)[:300])
+shutil.rmtree(d, ignore_errors=True)
+
 print()
 for n, e in failures:
     print(f"FAIL {n}: {e}")

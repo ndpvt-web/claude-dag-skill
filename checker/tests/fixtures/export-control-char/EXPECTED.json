@@ -1,0 +1,27 @@
+{
+ "exit": 0,
+ "verdicts": {
+  "T1": "verified"
+ },
+ "export": [
+  {
+   "format": "graphml",
+   "exit": 2,
+   "stderr_contains": [
+    "T1",
+    "U+0001",
+    "Refusing"
+   ],
+   "out_refused": true
+  },
+  {
+   "format": "cypher",
+   "exit": 2,
+   "stderr_contains": [
+    "T1",
+    "U+0001"
+   ],
+   "out_refused": true
+  }
+ ]
+}
